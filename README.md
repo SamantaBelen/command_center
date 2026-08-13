@@ -1,31 +1,43 @@
 # Command Center
 
-Personal command center repository. Organized into three top-level areas.
+Automatizaciones personales, organizadas espejando mi workspace de Notion
+("Command Center"). Cada área de Notion es una carpeta; cada sistema vive en su
+subcarpeta con su propio README que documenta lo no-obvio (IDs de bases, lógica,
+cómo corre).
 
-## Structure
+## Áreas (espejo de Notion)
 
-```
-command-center/
-├── README.md
-├── requirements.txt
-├── .gitignore
-├── .env.example
-├── logistics/      🟡  → habits/
-├── professional/   🔵 + 🟢  (Shortcuts, Links, Guidelines, Job Hunt Tracker)
-└── home-life/      🟣
-```
+| Carpeta          | Área en Notion                    | Qué contiene                                          |
+|------------------|-----------------------------------|-------------------------------------------------------|
+| `logistics/`     | Logistics 🟡                      | Tasks, Projects, Habits/Check-ins, Meetings           |
+| `professional/`  | Professional 🔵 + Job Hunting 🟢  | Shortcuts, Links, Guidelines, Job Hunt Tracker        |
+| `home-life/`     | Home/Life 🟣                      | Workout Tracker, Grocery Shopping                     |
 
-## Areas
+> Job Hunting es un área aparte en Notion, pero en el repo se agrupa bajo
+> `professional/` por ser actividad profesional.
 
-- **logistics/** 🟡 — day-to-day logistics, including `habits/`.
-- **professional/** 🔵🟢 — Shortcuts, Links, Guidelines, and the Job Hunt Tracker.
-- **home-life/** 🟣 — home and personal life.
+## Sistemas activos
 
-## Setup
+- **`logistics/habits/`** — generador de check-ins de hábitos (Notion, modelo de
+  cuota, idempotente). Corre en una Claude Code Routine, diario a las 4 AM ET.
 
-```bash
-pip install -r requirements.txt
-cp .env.example .env   # then fill in your own values
-```
+## Convenciones
 
-> `.env` is ignored by git. Only `.env.example` is tracked.
+- **Secretos:** nunca en el repo. Local → `.env` (ignorado por Git). En la
+  Routine → variable de entorno. El token de Notion vive fuera del código.
+- **Privado:** repo privado por defecto. Aunque no haya secretos, los IDs de las
+  bases y la estructura personal no tienen por qué ser públicos.
+- **Un README por sistema:** IDs y lógica documentados donde viven, para el "yo
+  del futuro".
+
+## Cómo lo usan las Routines
+
+Cada Routine clona este repo completo desde la rama principal en cada corrida y
+ejecuta el script de la subcarpeta correspondiente. Por eso los prompts apuntan
+con ruta completa, p.ej. `python logistics/habits/generate_habits.py`.
+
+## Nota de aislamiento
+
+El pipeline de notas de RBT (ABA) **no va aquí**: maneja PHI y tiene requisitos
+de BAA/compliance, así que merece su propio repo aislado y con control de acceso,
+separado de las automatizaciones personales.

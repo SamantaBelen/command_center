@@ -1,29 +1,18 @@
-# Environment
+# Secretos — nunca commitear
 .env
 .env.*
-!.env.example
+*.token
+secrets/
 
 # Python
 __pycache__/
 *.py[cod]
-*$py.class
-*.egg-info/
-.eggs/
-build/
-dist/
 .venv/
 venv/
 env/
-ENV/
 
-# OS
+# OS / editor
 .DS_Store
-Thumbs.db
-
-# Editors
 .vscode/
 .idea/
 *.swp
-
-# Logs
-*.log

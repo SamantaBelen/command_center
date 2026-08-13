@@ -1,5 +1,11 @@
 # Logistics 🟡
 
-Day-to-day logistics.
+Espejo del área **Logistics** de Notion (la columna operativa): Tasks, Projects,
+Habits/Check-ins, Meetings.
 
-- `habits/` — habit tracking and routines.
+## Sistemas
+- `habits/` — generador de check-ins de hábitos.
+
+## Futuros candidatos
+- Sincronización o reportes de Tasks/Projects.
+- Digest de Meetings.
