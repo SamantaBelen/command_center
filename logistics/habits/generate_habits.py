@@ -42,7 +42,7 @@ HEADERS = {
     "Content-Type": "application/json",
 }
 
-CADENCES = ["Daily", "Weekly", "Monthly", "Yearly"]
+CADENCES = ["Daily", "Weekly", "Monthly", "Yearly", "Bimonthly"]
 THROTTLE_SECONDS = 0.34   # ~3 requests/sec, Notion's documented ceiling
 MAX_RETRIES = 6
 
@@ -82,6 +82,9 @@ def period_key(cadence, today):
         return f"{today.year}-{today.month:02d}"        # 2026-08
     if cadence == "Yearly":
         return str(today.year)                          # 2026
+    if cadence == "Bimonthly":
+        bucket = (today.month - 1) // 2                  # 0..5
+        return f"{today.year}-BM{bucket + 1}"            # 2026-BM5 (Sep/Oct)
     raise ValueError(f"Unknown cadence: {cadence}")
 
 
@@ -103,6 +106,17 @@ def period_bounds(cadence, today):
         return first, nxt - datetime.timedelta(days=1)
     if cadence == "Yearly":
         return datetime.date(today.year, 1, 1), datetime.date(today.year, 12, 31)
+    if cadence == "Bimonthly":
+        # Fixed calendar bimesters: Jan-Feb, Mar-Apr, ... Nov-Dec.
+        bucket = (today.month - 1) // 2                  # 0..5
+        m1 = bucket * 2 + 1                              # first month of pair
+        m2 = bucket * 2 + 2                              # second month of pair
+        first = datetime.date(today.year, m1, 1)
+        if m2 == 12:
+            nxt = datetime.date(today.year + 1, 1, 1)
+        else:
+            nxt = datetime.date(today.year, m2 + 1, 1)
+        return first, nxt - datetime.timedelta(days=1)
     raise ValueError(f"Unknown cadence: {cadence}")
 
 
