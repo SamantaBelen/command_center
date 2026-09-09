@@ -13,8 +13,8 @@ siguiente.
 | Habits Check-ins    | `25c3317dc9c7430a885c0aa6b009f1f1` | El log; una fila por marca |
 
 **Habits** — props usadas: `Name`, `Active` (checkbox), `Cadence`
-(Daily/Weekly/Monthly/Yearly), `Target` (número, cuántas veces por periodo),
-`Order` (secuencia del día).
+(Daily/Weekly/Monthly/Yearly/Bimonthly), `Target` (número, cuántas veces por
+periodo), `Order` (secuencia del día).
 
 **Check-ins** — props escritas: `Log` (título), `Item` (relación → Habits),
 `Period` (texto, clave del periodo), `Period start` / `Period end` (fechas),
@@ -30,6 +30,7 @@ La clave `Period` identifica el periodo y sirve para el dedup:
 | Weekly  | `YYYY-Www`   | `2026-W33`   | lunes / domingo (ISO)   |
 | Monthly | `YYYY-MM`    | `2026-08`    | día 1 / último del mes  |
 | Yearly  | `YYYY`       | `2026`       | 1 ene / 31 dic          |
+| Bimonthly | `YYYY-BMn` | `2026-BM5`   | bimestre fijo (Ene-Feb, Mar-Abr, …, Nov-Dic): 1er día / último día |
 
 Corre las 4 cadencias todos los días; el dedup por `Period` hace que
 Weekly/Monthly/Yearly sean no-ops salvo la primera corrida de cada periodo.
