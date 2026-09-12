@@ -23,14 +23,24 @@ python3 crop_cart_screenshot.py mi_captura.png carpeta_salida
 
 Genera `carpeta_salida/01_nombre_del_producto.png`, `02_...png`, etc.
 
-## Limitación conocida
+## Campos extraídos (`manifest.json`)
 
-El **último producto de la lista** puede arrastrar el footer ("Saving $...
-Go to checkout") porque no hay un título siguiente que marque el límite.
-Recortar ese último manualmente si hace falta.
+Junto a los PNG, el script escribe un `manifest.json` en la carpeta de
+salida con, por producto: `title`, `price` (precio de oferta), `regular_price`
+(precio regular, si había BOGO/tachado), `promo` (texto de la promo),
+`quantity` (cantidad en el carrito, si se detectó), `store` (tienda,
+detectada del header "Personal X Cart") e `image_path`.
 
-## Pendiente / próximos pasos
+Nota: Tesseract a veces lee el "1" tachado de un precio regular como "4"
+(ej. $14.58 → $44.58). Cuando hay promo "Buy 1, get 1 free" se corrige
+asumiendo que el precio regular es ~2× el de oferta.
 
-- Subir los recortes automáticamente a la página de Notion del producto
-  correspondiente (match por nombre) en vez de arrastrarlos a mano.
-- Regla para cortar el footer de checkout en el último producto.
+## Subida a Notion
+
+Los campos del manifest + la imagen se usan para crear/actualizar la
+página del producto correspondiente en la base `Grocery Shopping` (match
+por nombre genérico del producto — si ya existe una página con ese nombre,
+se actualiza; si no, se crea una nueva con todos los campos llenos e
+imagen incrustada). Este paso lo hace Claude directamente (no es parte del
+script), ya que requiere juicio para decidir el nombre genérico y la
+categoría de cada producto.
