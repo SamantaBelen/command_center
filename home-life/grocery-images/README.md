@@ -63,10 +63,12 @@ Shopping` (`collection://cb443835-5bd5-44ff-a57e-48c5db887c3f`).
    título e imagen:
    - `Store`: se detecta solo del header de la captura ("Personal X
      Cart" → campo `store` del manifest).
-   - `Status`: `"In cart"` (la captura es del carrito, todavía no
-     comprado) — **no** llenar `Fecha de compra` en ese caso (esa
-     columna solo se usa cuando `Status = "Bought"`, siguiendo la
-     convención ya existente en la base).
+   - `Status`: **`"To buy"` por defecto**, aunque la captura sea de un
+     "carrito" de Instacart — Instacart se usa solo para explorar
+     precios/ofertas, no es una compra real en curso. Solo usar
+     `"In cart"`/`"Bought"` si el usuario confirma explícitamente que sí
+     compró o dejó algo apartado. No llenar `Fecha de compra` salvo que
+     `Status = "Bought"` (convención ya existente en la base).
    - `Quantity`: el `ct` detectado si lo hay (ej. `"2 ct (8.3 oz c/u)"`);
      si no hay `ct` visible, usar el tamaño del título (ej. `"16 oz"`).
    - `Notes`: marca/variante + precio/promo del manifest (ej. `"Tuscanini
