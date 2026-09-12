@@ -29,6 +29,7 @@ Notes:
   screenshots vary in DPI/scale/app layout).
 """
 
+import json
 import re
 import sys
 from pathlib import Path
@@ -60,6 +61,15 @@ NOISE_PATTERNS = [
     r"\d+\s*ct\b",                  # quantity stepper ("2ct +", "— 2ct +")
 ]
 NOISE_RE = [re.compile(p, re.IGNORECASE) for p in NOISE_PATTERNS]
+
+# Marks the checkout footer that trails the *last* product in the list --
+# used only to trim that last crop, never to start/end a title.
+FOOTER_RE = re.compile(r"saving \$|go to checkout", re.IGNORECASE)
+
+PRICE_RE = re.compile(r"\$\s*([\d,]+\.\d{2})")
+PROMO_RE = re.compile(r"buy\s+\d+.*?free", re.IGNORECASE)
+QTY_RE = re.compile(r"(\d+)\s*ct\b", re.IGNORECASE)
+STORE_RE = re.compile(r"personal\s+(\w+)\s+cart", re.IGNORECASE)
 
 
 def is_noise(text: str) -> bool:
@@ -127,6 +137,43 @@ def find_titles(lines):
     return titles
 
 
+def detect_store(lines) -> str:
+    for _, _, text in lines:
+        m = STORE_RE.search(text)
+        if m:
+            return m.group(1).title()
+    return ""
+
+
+def extract_fields(lines, top: int, bottom: int) -> dict:
+    """Pull price/promo/quantity out of every line (noise or not) that
+    falls within this product's own crop window."""
+    block_text = " | ".join(text for t, b, text in lines if top <= t < bottom)
+
+    prices = [float(p.replace(",", "")) for p in PRICE_RE.findall(block_text)]
+    sale_price = min(prices) if prices else None
+    regular_price = max(prices) if len(prices) > 1 else None
+
+    promo_match = PROMO_RE.search(block_text)
+    qty_match = QTY_RE.search(block_text)
+
+    # Tesseract sometimes reads the strikethrough "1" in a regular price as
+    # "4" (e.g. $14.58 -> $44.58 -- a leading-digit misread, always off by
+    # exactly $30). For "Buy 1, get 1 free" the regular price is reliably
+    # ~2x the sale price, so use that to catch and correct it.
+    if promo_match and sale_price and regular_price:
+        expected = round(sale_price * 2, 2)
+        if abs((regular_price - expected) - 30.0) < 0.5:
+            regular_price = expected
+
+    return {
+        "price": sale_price,
+        "regular_price": regular_price,
+        "promo": promo_match.group(0) if promo_match else "",
+        "quantity": qty_match.group(1) if qty_match else "",
+    }
+
+
 def crop_products(image_path: str, out_dir: str):
     image = Image.open(image_path).convert("RGB")
     width, height = image.size
@@ -141,22 +188,44 @@ def crop_products(image_path: str, out_dir: str):
         print("No product titles detected. Try lowering MIN_GAP_PX or MIN_CONFIDENCE.")
         return []
 
+    store = detect_store(lines)
+
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
 
     results = []
     for idx, t in enumerate(titles):
         crop_top = max(0, t["top"] - TOP_PAD_PX)
-        crop_bottom = titles[idx + 1]["top"] - BOTTOM_PAD_PX if idx + 1 < len(titles) else height
+
+        if idx + 1 < len(titles):
+            crop_bottom = titles[idx + 1]["top"] - BOTTOM_PAD_PX
+        else:
+            # Last product: stop at the checkout footer if one follows,
+            # instead of dragging it into the crop.
+            crop_bottom = height
+            for line_top, _, text in lines:
+                if line_top > t["bottom"] and FOOTER_RE.search(text):
+                    crop_bottom = line_top - BOTTOM_PAD_PX
+                    break
+
         crop_bottom = max(crop_bottom, crop_top + 20)  # never a zero/negative-height crop
+
+        fields = extract_fields(lines, t["top"], crop_bottom)
+        fields.update(title=t["text"], store=store)
 
         crop = image.crop((0, crop_top, width, crop_bottom))
         slug = slugify(t["text"])
         filename = f"{idx+1:02d}_{slug}.png"
         path = out / filename
         crop.save(path)
-        results.append((t["text"], str(path)))
-        print(f"[{idx+1}] '{t['text']}' -> {path}  (y={crop_top}-{crop_bottom})")
+
+        fields["image_path"] = str(path)
+        results.append(fields)
+        print(f"[{idx+1}] {fields}  (y={crop_top}-{crop_bottom})")
+
+    manifest_path = out / "manifest.json"
+    manifest_path.write_text(json.dumps(results, indent=2))
+    print(f"\nWrote {manifest_path}")
 
     return results
 
