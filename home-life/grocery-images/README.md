@@ -37,10 +37,52 @@ asumiendo que el precio regular es ~2× el de oferta.
 
 ## Subida a Notion
 
-Los campos del manifest + la imagen se usan para crear/actualizar la
-página del producto correspondiente en la base `Grocery Shopping` (match
-por nombre genérico del producto — si ya existe una página con ese nombre,
-se actualiza; si no, se crea una nueva con todos los campos llenos e
-imagen incrustada). Este paso lo hace Claude directamente (no es parte del
-script), ya que requiere juicio para decidir el nombre genérico y la
-categoría de cada producto.
+Este paso lo hace Claude directamente sobre el `manifest.json` + los PNG
+(no es parte del script, porque requiere criterio: decidir el nombre
+genérico y la categoría de cada producto). Base destino: `Grocery
+Shopping` (`collection://cb443835-5bd5-44ff-a57e-48c5db887c3f`).
+
+**Flujo (probado end-to-end el 2026-09-12 con un carrito real de Publix):**
+
+1. **Nombre genérico, no la marca completa.** El título OCR trae marca +
+   variante + tamaño (ej. *"Duke's Mayonnaise, with Olive Oil, Light (11.5
+   fl oz)"*); la página en Notion usa el nombre genérico del producto (ej.
+   **"Mayonnaise"**). La marca/tamaño exactos quedan en la foto incrustada
+   y en `Notes` — así "la foto adentro muestra exactamente cuál".
+2. **Buscar antes de crear** (`notion-query-data-sources`, filtro
+   `Item CONTAINS <nombre genérico>`) para no duplicar. Si ya existe una
+   página con ese nombre (ej. "Pan"), se **actualiza** esa página en vez
+   de crear una nueva.
+3. **Subir la imagen**: `notion-create-file-upload` (da una `upload_url`
+   en `api.notion.com`, ya permitido en este environment) → un `POST`
+   multipart con `curl` al archivo PNG → la respuesta trae
+   `markdown_source` (`file-upload://<id>`) para usar como imagen en el
+   contenido de la página: `![alt](file-upload://<id>)`.
+4. **Llenar todos los campos** de la base (`Category`, `Store`, `Status`,
+   `Quantity`, `Notes`, `Duración típica`, `Recurring`) — no solo el
+   título e imagen:
+   - `Store`: se detecta solo del header de la captura ("Personal X
+     Cart" → campo `store` del manifest).
+   - `Status`: `"In cart"` (la captura es del carrito, todavía no
+     comprado) — **no** llenar `Fecha de compra` en ese caso (esa
+     columna solo se usa cuando `Status = "Bought"`, siguiendo la
+     convención ya existente en la base).
+   - `Quantity`: el `ct` detectado si lo hay (ej. `"2 ct (8.3 oz c/u)"`);
+     si no hay `ct` visible, usar el tamaño del título (ej. `"16 oz"`).
+   - `Notes`: marca/variante + precio/promo del manifest (ej. `"Tuscanini
+     Margherita, Thin Crust — $6.31 (BOGO, reg. $12.62)"`).
+   - `Category`/`Duración típica`: criterio propio según el tipo de
+     producto (si la página ya existía, no tocar estos dos a menos que
+     estén claramente mal).
+   - Al **actualizar** una página existente que pasa de `Bought` a
+     `In cart` (nueva compra), limpiar su `Fecha de compra` vieja
+     (`"date:Fecha de compra:start": null`) para que no quede una fecha
+     de compra pasada contradiciendo el status actual.
+5. Icono de página: seguir la convención existente de un emoji por
+   producto (ej. 🍞 Pan, 🍕 Pizza).
+
+**Limitación conocida:** el matching de nombre genérico y la categoría
+son juicio de Claude en cada corrida, no una regla determinista en el
+script — dos corridas para el mismo tipo de producto deberían coincidir
+en el nombre, pero no hay garantía automática si cambia mucho el
+fraseo del título original.
