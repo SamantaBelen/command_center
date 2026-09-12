@@ -16,3 +16,7 @@ env/
 .vscode/
 .idea/
 *.swp
+
+# Grocery image crops — generated output, not source
+home-life/grocery-images/out*/
+home-life/grocery-images/cropped/
