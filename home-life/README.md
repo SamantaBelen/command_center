@@ -9,11 +9,12 @@ Finanzas).
   `Grocery Shopping`, con todos los campos llenos (Category, Store, Status,
   Quantity, Notes, Duración típica).
 - `finanzas/` — presupuesto mensual, transacciones reales (clasificadas desde
-  estados de cuenta), deudas y metas de ahorro. Vive en **Google Sheets**
-  (no en Notion — se probó ahí primero, luego se migró para compartir/
-  exportar más fácil). Flujo manual mes a mes: se manda el PDF del banco, se
-  parsea y categoriza, y se compara Actual vs Planned. Ver README para el
-  link a la hoja, el schema completo y las categorías/deudas activas.
+  estados de cuenta), deudas y metas de ahorro. Vive en **Notion** (bases
+  Monthly Budget/Transactions/Debts/Savings Goals bajo Command Center →
+  Home/Life → Finanzas). Flujo manual mes a mes: se manda el PDF del banco,
+  se parsea y categoriza, y se agregan las filas nuevas — nunca se regenera
+  nada existente. Ver README para el schema completo y las categorías/
+  deudas activas.
 
 ## Futuros candidatos
 - Tracker de closet con NFC/UHF RFID.

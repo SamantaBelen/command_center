@@ -1,15 +1,14 @@
 # Finanzas personales
 
 Presupuesto mensual, transacciones reales, deudas y metas de ahorro. Diseñado
-en una sesión de chat larga (12-13 sep 2026) analizando 12 meses de estados de
+en una sesión de chat larga (12-14 sep 2026) analizando 12 meses de estados de
 cuenta de Wells Fargo (sep 2025 – ago 2026).
 
-**El sistema vive en Google Sheets** (no en Notion — se probó ahí primero,
-pero se migró para poder compartir/exportar más fácil, ej. con la mamá de
-Samanta). Ver "Historia: versión en Notion" al final de este README para lo
-que quedó abandonado ahí.
-
-**Hoja:** https://docs.google.com/spreadsheets/d/1JBdFxssfwlhTvg0KgHVR8zy0PrYlfATTMfjPF3fNpEg/edit
+**El sistema vive en Notion**, bajo la página **Finanzas** (enlazada desde
+Command Center → columna Home/Life). Se intentó migrar a Google Sheets para
+compartir/exportar más fácil, pero se revirtió (ver "Intento abandonado:
+Google Sheets" al final) — Samanta comparte la página de Notion ella misma
+cuando lo necesita (ej. con su mamá), no hace falta que Claude gestione eso.
 
 ## Flujo mensual (manual, no hay script todavía)
 
@@ -18,56 +17,64 @@ que quedó abandonado ahí.
    cada cargo** en una de las categorías de abajo — con el mismo criterio
    usado en esta sesión (ver "Gotchas" para los casos que requieren juicio,
    no son mecánicos).
-3. Claude agrega las filas nuevas a la pestaña **Transacciones**, con la
-   columna `Mes` en el formato exacto `"{Mes abreviado} {Año}"` (ej.
-   `"Sep 2026"`) — tiene que calzar carácter por carácter con la columna
-   `Mes` de **Presupuesto Mensual**, porque de eso depende el SUMIFS.
-4. Si faltan filas de **Presupuesto Mensual** para el mes nuevo, crearlas
-   primero (copiar los `Planned` del mes anterior, ajustar si algo cambió) —
-   son las mismas 15 categorías de siempre, una fila por categoría por mes.
-5. Las columnas `Actual`/`Remaining`/`% Usado`/`Status` de Presupuesto
-   Mensual son fórmulas que se recalculan solas al agregar filas a
-   Transacciones — no hay que tocarlas.
+3. Claude crea las filas en **Transactions**, cada una enlazada a su
+   **Budget Line** correspondiente (`{Categoría} — {Mes} 2026` en
+   **Monthly Budget**) para que el rollup `Actual` se actualice solo.
+   Transacciones de tipo Ingreso/Transferencia Interna/Reembolso NO llevan
+   `Budget Line` (no cuentan contra el presupuesto).
+4. Se compara `Actual` vs `Planned` de ese mes (ya lo calcula la fórmula
+   `Status`/`% Usado`/`Remaining`) y se reporta el resumen.
+5. Si faltan filas de Monthly Budget para el mes nuevo, crearlas primero
+   (copiar los `Planned` del mes anterior, ajustar si algo cambió) — son las
+   mismas 15 categorías de siempre, una fila por categoría por mes.
 
-## Google Sheets — estructura
+Esto es incremental: cada mes solo se agregan páginas nuevas a Transactions
+(y a Monthly Budget si falta el mes), nunca hay que regenerar ni tocar nada
+existente — a diferencia del intento de Sheets, aquí no hay riesgo de borrar
+vistas, gráficas o estilos que Samanta agregue por su cuenta.
 
-**Pestaña "Transacciones"** (una fila por cargo real del banco):
-`Fecha`, `Descripcion`, `Monto`, `Tipo` (Ingreso/Gasto/Ahorro/Transferencia
-Interna/Reembolso), `Categoria`, `Mes` (texto, ej. `"Ago 2026"` — debe
-coincidir exacto con Presupuesto Mensual), `Fuente` (Wells Fargo/Manual/
-Efectivo), `Notas`.
+## Notion — bases y IDs
 
-**Pestaña "Presupuesto Mensual"** (una fila = una categoría en un mes):
-`Mes`, `Categoria`, `Planned`, `Actual` (fórmula `SUMIFS` sobre Transacciones,
-sumando solo filas `Tipo = "Gasto"` o `Tipo = "Ahorro"` — Ingreso/
-Transferencia Interna/Reembolso NO cuentan contra el presupuesto),
-`Remaining` (`Planned - Actual`), `% Usado`, `Status` (🔴 Sobre presupuesto /
-🟡 Cerca del límite / 🟢 OK).
+| Base | Página/DB URL | Data source ID |
+|---|---|---|
+| Finanzas (página contenedora) | `3da2cd38-4e97-819e-92d4-cc1aa6a41e06` | — |
+| Monthly Budget | `69c7b671-30c3-4969-a1a3-ac0008ac1437` | `bfb1c827-5ab9-4348-8443-78dbcd17ef97` |
+| Transactions | `08d36af0-f6bb-4aab-b6ba-da9c4d6f7932` | `9487ca79-2e67-41a2-afdb-8728a00541e3` |
+| Debts | `f786f33e-24e6-4f52-b534-5970ecf83de3` | `9cb09780-a7e7-4cc8-8f69-a32ce6bbe629` |
+| Savings Goals | `88ad297b-1bb9-4844-b162-cf5ff8ec6899` | `c480af21-8cbc-4fd6-a5b4-7c5ed29729d3` |
 
-**Pestaña "Deudas"**: `Nombre`, `Monto Adeudado`, `Estado` (Activa/Pagada),
-`Prioridad` (Sin urgencia/Urgente), `Notas`.
+### Schema
 
-**Pestaña "Metas de Ahorro"**: `Nombre`, `Monto Objetivo`, `Monto Actual`,
-`Fecha Objetivo`, `Estado`, `Notas`. Trae una fila de ejemplo marcada
-"EJEMPLO - borra esta fila" con formato amarillo — bórrala al agregar la
-primera meta real.
+**Monthly Budget** (una fila = una categoría en un mes, el "sobre"):
+`Name`, `Category` (select), `Month` (date), `Planned` (number), `Transactions`
+(relation ← Transactions.Budget Line), `Actual` (rollup: sum), `Remaining`
+(formula: Planned − Actual), `% Usado` (formula), `Status` (formula: 🔴/🟢).
 
-### Categorías (usadas en Transacciones.Categoria y Presupuesto.Categoria)
+**Transactions** (el log real, uno por cargo del banco):
+`Description`, `Date`, `Amount`, `Type` (Ingreso/Gasto/Ahorro/Transferencia
+Interna/Reembolso), `Category` (select, mismas opciones que Monthly Budget),
+`Budget Line` (relation → Monthly Budget), `Savings Goal` (relation →
+Savings Goals, solo si Type=Ahorro hacia una meta), `Debt` (relation → Debts,
+solo si es un pago hacia una deuda), `Source` (Wells Fargo/Manual/Efectivo),
+`Notes`.
 
-Comida, Transporte, Prestamo Auto, Suscripciones, Fitness,
-P2P/Transferencias, Comisiones Bancarias, Ahorro, Compras, Salud, Cuidado
-Personal, Mascotas, Otros, Remesas, Viajes.
+**Debts**: `Name`, `Amount Owed`, `Status` (Activa/Pagada), `Priority`
+(Sin urgencia/Urgente), `Target Date`, `Notes`, `Pagos` (relation ←
+Transactions.Debt), `Total Pagado` (rollup), `Saldo Pendiente` (formula).
 
-*(`Prestamo Auto` es el pago mensual fijo del carro — no confundir con la
-pestaña `Deudas`, que es para deudas personales tipo "le debo a X".)*
+**Savings Goals**: `Name`, `Target Amount`, `Target Date`, `Status`
+(Activa/Completada/Pausada), `Notes`, `Transactions` (relation ←
+Transactions.Savings Goal), `Current Amount` (rollup), `% Completado`
+(formula).
 
-### Regenerar/editar el archivo
+### Categorías (select, compartidas por Monthly Budget y Transactions)
 
-El .xlsx se construyó con `openpyxl` (script no guardado en el repo, ver
-sección "Gotchas" abajo si hay que rehacerlo) y se subió a Drive vía
-`create_file` con `contentMimeType` de xlsx, dejando que Drive lo convierta
-a Google Sheet nativo — así las fórmulas `SUMIFS`/`IFERROR`/`IF` quedan como
-fórmulas reales de Sheets, no como texto.
+Comida, Transporte, Préstamo Auto, Suscripciones, Fitness, P2P/Transferencias,
+Comisiones Bancarias, Ahorro, Compras, Salud, Cuidado Personal, Mascotas,
+Otros, Remesas, Viajes.
+
+*(`Préstamo Auto` es el pago mensual fijo del carro — no confundir con la
+base `Debts`, que es para deudas personales tipo "le debo a X".)*
 
 ## Estado a septiembre 2026 (snapshot de cuando se armó esto)
 
@@ -143,33 +150,32 @@ Tipo=Reembolso, sin `Budget Line`/no cuentan contra el presupuesto.
 - Compras en Costco/Publix con reembolso de mamá el mismo día son gasto real
   de ella (va a Comida/Compras) — el reembolso correspondiente de Sasaya
   Corporation/Yadira NO cuenta hacia la deuda con mamá (ya se restó).
-- Antes de escribir en la hoja, revisar que `pip install openpyxl` esté
-  disponible en el entorno (no viene preinstalado aquí pese a lo que dice
-  la skill de xlsx) y que `recalc.py` (LibreOffice) puede no funcionar en
-  este sandbox — no es bloqueante: Google Sheets recalcula las fórmulas por
-  su cuenta al convertir el archivo subido vía `create_file`, así que basta
-  con verificar leyendo el archivo de vuelta con `read_file_content` después
-  de subirlo.
+- Al agregar propiedades nuevas a una data source de Notion (rollups/
+  fórmulas), usar `notion-update-data-source` **una columna a la vez** —
+  varios `ADD COLUMN` con fórmulas en el mismo batch fallan con
+  "Type error with formula" aunque cada una funcione bien por separado.
 
 ---
 
-## Historia: versión en Notion (abandonada, sep 2026)
+## Intento abandonado: Google Sheets (13-14 sep 2026)
 
-Antes de migrar a Sheets, este sistema se construyó primero en Notion
-(4 bases: Monthly Budget, Transactions, Debts, Savings Goals, bajo una
-página "Finanzas" enlazada desde Command Center → Home/Life) con rollups y
-fórmulas nativas de Notion, y se llegó a poblar con el presupuesto de
-agosto/septiembre y las 41 transacciones de agosto. Se abandonó porque
-Samanta prefirió Sheets por facilidad de compartir/exportar. Las bases de
-Notion pueden seguir existiendo sin usarse, o haberse archivado — confirmar
-con Samanta el estado actual antes de asumir que siguen ahí intactas.
+Se migró todo a Google Sheets (4 pestañas equivalentes) buscando que fuera
+más fácil de compartir/exportar. Se abandonó y se volvió a Notion por dos
+razones que salieron en la práctica:
 
-IDs de referencia (por si hace falta recuperar algo de ahí):
+1. **No hay forma de editar celdas en vivo.** Cada actualización mensual
+   requeriría regenerar el archivo completo con `openpyxl` y volver a
+   subirlo con `create_file` (Google Drive) — no hay API disponible en esta
+   sesión para agregar filas a una hoja existente sin recrearla.
+2. **Regenerar el archivo completo destruye cualquier gráfica o estilo**
+   que Samanta agregue manualmente en Sheets — el mismo problema que la hizo
+   dudar y pedir separar la pestaña de Transacciones a un archivo aparte
+   (se llegó a implementar esto vía `IMPORTRANGE` antes de revertir todo).
+   Además, subir el archivo con las 4 pestañas completas empezó a fallar
+   con `"Invalid conversion requested"` de forma intermitente (un archivo
+   mínimo de una sola fórmula sí subía bien, así que no se aisló la causa
+   exacta — posiblemente tamaño/complejidad del archivo).
 
-| Base | Página/DB URL | Data source ID |
-|---|---|---|
-| Finanzas (página contenedora) | `3da2cd38-4e97-819e-92d4-cc1aa6a41e06` | — |
-| Monthly Budget | `69c7b671-30c3-4969-a1a3-ac0008ac1437` | `bfb1c827-5ab9-4348-8443-78dbcd17ef97` |
-| Transactions | `08d36af0-f6bb-4aab-b6ba-da9c4d6f7932` | `9487ca79-2e67-41a2-afdb-8728a00541e3` |
-| Debts | `f786f33e-24e6-4f52-b534-5970ecf83de3` | `9cb09780-a7e7-4cc8-8f69-a32ce6bbe629` |
-| Savings Goals | `88ad297b-1bb9-4844-b162-cf5ff8ec6899` | `c480af21-8cbc-4fd6-a5b4-7c5ed29729d3` |
+Para compartir la página de Notion, Samanta la comparte ella misma
+directamente desde Notion (con el correo de quien sea, o con un link
+público) cuando lo necesite — no requiere que Claude gestione nada de eso.
