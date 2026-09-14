@@ -80,7 +80,8 @@ base `Debts`, que es para deudas personales tipo "le debo a X".)*
 
 **Recurrentes mensuales fijos** (~$390.39/mes total):
 Google One $1.99 (Google Drive) · iCloud+ $2.99 · Claude $19.99→$20.00 ·
-Apple Music $6.78 · Car loan (WF Payment) $299.79 fijo · LA Fitness $58.84
+Apple Music $6.78→$7.91 (subió, confirmado por recibo de Apple: $6.99 +
+impuestos FL) · Car loan (WF Payment) $299.79 fijo · LA Fitness $58.84
 (monto final confirmado, antes variaba).
 
 **Recurrentes anuales**: LA Fitness cuota anual ~$73 (cobra ~jun) · Registro
