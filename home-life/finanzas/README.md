@@ -1,14 +1,21 @@
 # Finanzas personales
 
-Presupuesto mensual, transacciones reales, deudas y metas de ahorro. Diseñado
-en una sesión de chat larga (12-14 sep 2026) analizando 12 meses de estados de
-cuenta de Wells Fargo (sep 2025 – ago 2026).
+Presupuesto mensual, transacciones reales, deudas, metas de ahorro, cuentas,
+balances y control de recurrentes. Diseñado en una sesión de chat larga
+(12-16 sep 2026) analizando 12 meses de estados de cuenta de Wells Fargo
+(sep 2025 – ago 2026).
 
 **El sistema vive en Notion**, bajo la página **Finanzas** (enlazada desde
 Command Center → columna Home/Life). Se intentó migrar a Google Sheets para
 compartir/exportar más fácil, pero se revirtió (ver "Intento abandonado:
 Google Sheets" al final) — Samanta comparte la página de Notion ella misma
 cuando lo necesita (ej. con su mamá), no hace falta que Claude gestione eso.
+
+**Meta principal de Samanta** (dicha explícitamente): cada mes asegurarse de
+que (1) todo lo que debe pagarse se pagó, y (2) no le estén cobrando cosas /
+suscripciones que no pidió. Por eso existen la base **Recurrentes** y la
+página **📊 Resumen mensual** (dashboard) — son el corazón del uso real, más
+que el presupuesto en sí.
 
 ## Flujo mensual (manual, no hay script todavía)
 
@@ -17,31 +24,60 @@ cuando lo necesita (ej. con su mamá), no hace falta que Claude gestione eso.
    cada cargo** en una de las categorías de abajo — con el mismo criterio
    usado en esta sesión (ver "Gotchas" para los casos que requieren juicio,
    no son mecánicos).
-3. Claude crea las filas en **Transactions**, cada una enlazada a su
-   **Budget Line** correspondiente (`{Categoría} — {Mes} 2026` en
-   **Monthly Budget**) para que el rollup `Actual` se actualice solo.
-   Transacciones de tipo Ingreso/Transferencia Interna/Reembolso NO llevan
-   `Budget Line` (no cuentan contra el presupuesto).
+3. Claude crea las filas en **Transactions**. Cada transacción lleva **tres
+   relaciones clave**:
+   - `Account` → qué cuenta (Contribuciones/Checking o Abundancia/Savings, en
+     la base **Accounts**).
+   - `Balance Month` → la fila cuenta-mes de **Account Balances** (ej.
+     "Checking (Contribuciones) — Sep 2026"). Esto alimenta el rollup que
+     calcula el saldo (ver abajo). **Toda** transacción lleva esta relación.
+   - `Budget Line` → la categoría-mes de **Monthly Budget** (`{Categoría} —
+     {Mes} 2026`) para el rollup `Actual`. Transacciones de tipo Ingreso /
+     Transferencia Interna / Reembolso NO llevan `Budget Line` (no cuentan
+     contra el presupuesto).
 4. Se compara `Actual` vs `Planned` de ese mes (ya lo calcula la fórmula
    `Status`/`% Usado`/`Remaining`) y se reporta el resumen.
-5. Si faltan filas de Monthly Budget para el mes nuevo, crearlas primero
-   (copiar los `Planned` del mes anterior, ajustar si algo cambió) — son las
-   mismas 15 categorías de siempre, una fila por categoría por mes.
+5. Se revisa el **cuadre de balances** en Account Balances (Status ✅/⚠️) y el
+   **control de recurrentes** (que los activos aparecieron y ningún cancelado
+   reapareció).
+6. Si faltan filas de Monthly Budget o Account Balances para el mes nuevo,
+   crearlas primero. Monthly Budget: copiar los `Planned` del mes anterior.
+   Account Balances: una fila por cuenta, con `Balance Start` = `Balance End
+   (Real)` del mes anterior, y `Balance End (Real)` = captura del balance real
+   que manda Samanta.
 
-Esto es incremental: cada mes solo se agregan páginas nuevas a Transactions
-(y a Monthly Budget si falta el mes), nunca hay que regenerar ni tocar nada
-existente — a diferencia del intento de Sheets, aquí no hay riesgo de borrar
-vistas, gráficas o estilos que Samanta agregue por su cuenta.
+Esto es incremental: cada mes solo se agregan páginas nuevas, nunca hay que
+regenerar ni tocar nada existente — a diferencia del intento de Sheets, aquí
+no hay riesgo de borrar vistas, gráficas o estilos que Samanta agregue por su
+cuenta.
+
+### Signos de los montos (importante)
+
+`Amount` en Transactions es **firmado**: gastos/débitos negativos, ingresos/
+créditos positivos. Un error común al cargar es meter un gasto en positivo —
+si el cuadre de un mes no da, revisar signos primero (pasó en ago 2026: 6
+transacciones estaban en positivo). **Siempre verificar sumas con código**
+(script Python sobre el CSV), no a mano — pedido explícito de Samanta.
 
 ## Notion — bases y IDs
 
 | Base | Página/DB URL | Data source ID |
 |---|---|---|
 | Finanzas (página contenedora) | `3da2cd38-4e97-819e-92d4-cc1aa6a41e06` | — |
+| 📊 Resumen mensual (dashboard) | `3dd2cd38-4e97-8151-b56c-ded38cbeb749` | — (página, no DB) |
 | Monthly Budget | `69c7b671-30c3-4969-a1a3-ac0008ac1437` | `bfb1c827-5ab9-4348-8443-78dbcd17ef97` |
 | Transactions | `08d36af0-f6bb-4aab-b6ba-da9c4d6f7932` | `9487ca79-2e67-41a2-afdb-8728a00541e3` |
+| Accounts | `4693bd56-fbc7-4aec-b95d-cd7e3bcfea2b` | `1b67a941-5d57-4725-8cd8-58057225629e` |
+| Account Balances | `2dfcd460-fcf6-45f2-ba46-e41252c9c554` | `77382a75-7019-4489-96bf-d79f2e5d9df4` |
+| Recurrentes | `e620040c-92ab-4a64-80c8-4e82bcc0557e` | `8c9f4205-34cc-4daa-8fd6-93f16eccb183` |
 | Debts | `f786f33e-24e6-4f52-b534-5970ecf83de3` | `9cb09780-a7e7-4cc8-8f69-a32ce6bbe629` |
 | Savings Goals | `88ad297b-1bb9-4844-b162-cf5ff8ec6899` | `c480af21-8cbc-4fd6-a5b4-7c5ed29729d3` |
+
+**Cuentas** (filas en Accounts): Contribuciones (Checking, WF ...5244) =
+`3dd2cd38-4e97-8174-8316-dbd55a03bfb0` · Abundancia Capital (Savings, WF
+...5634) = `3dd2cd38-4e97-81a7-8a3f-c7837af959d6`. Ambas Owner=Samanta. El
+diseño soporta agregar las cuentas de la mamá (Owner=Mamá) creando filas, sin
+tocar el schema.
 
 ### Schema
 
@@ -51,12 +87,36 @@ vistas, gráficas o estilos que Samanta agregue por su cuenta.
 (formula: Planned − Actual), `% Usado` (formula), `Status` (formula: 🔴/🟢).
 
 **Transactions** (el log real, uno por cargo del banco):
-`Description`, `Date`, `Amount`, `Type` (Ingreso/Gasto/Ahorro/Transferencia
-Interna/Reembolso), `Category` (select, mismas opciones que Monthly Budget),
-`Budget Line` (relation → Monthly Budget), `Savings Goal` (relation →
-Savings Goals, solo si Type=Ahorro hacia una meta), `Debt` (relation → Debts,
-solo si es un pago hacia una deuda), `Source` (Wells Fargo/Manual/Efectivo),
-`Notes`.
+`Description`, `Date`, `Amount` (firmado), `Type` (Ingreso/Gasto/Ahorro/
+Transferencia Interna/Reembolso), `Category` (select, mismas opciones que
+Monthly Budget), `Account` (relation → Accounts), `Balance Month` (relation →
+Account Balances, alimenta el cuadre), `Budget Line` (relation → Monthly
+Budget), `Savings Goal` (relation → Savings Goals, solo si Type=Ahorro hacia
+una meta), `Debt` (relation → Debts, solo si es un pago hacia una deuda),
+`Source` (Wells Fargo/Manual/Efectivo), `Notes`.
+
+**Accounts** (una fila por cuenta bancaria):
+`Name`, `Owner` (Samanta/Mamá), `Bank` (Wells Fargo/Banco Pichincha), `Type`
+(Checking/Savings), `Últimos 4`, `Moneda` (USD), `Notes`, más relaciones
+inversas `Transactions`, `Balances`, `Recurrentes`.
+
+**Account Balances** (una fila = una cuenta en un mes; prueba de cuadre):
+`Name`, `Cuenta` (relation → Accounts), `Month` (date), `Balance Start`
+(number, tecleado del statement/mes anterior), `Balance End (Real)` (number,
+captura del banco), `Movimientos` (relation ← Transactions.Balance Month),
+`Suma Movimientos` (rollup: sum de Amount de los Movimientos), `Balance End
+(Calculado)` (**formula**: `Balance Start + Suma Movimientos`), `Diferencia`
+(formula: Calculado − Real), `Status` (formula: ✅ Cuadra / ⚠️ Revisar).
+El Calculado sale **solo** de las transacciones — si agregas/editas/borras una
+transacción con su `Balance Month` puesto, el saldo se recalcula automático.
+
+**Recurrentes** (lista maestra de cargos recurrentes, para el control mensual):
+`Name`, `Estado` (Activa/Cancelada/Pausada), `Cadencia` (Mensual/Anual),
+`Monto esperado` (number), `Cuándo` (texto, ej. "~17-18 de cada mes"),
+`Categoría` (select), `Cuenta` (relation → Accounts), `Notes`.
+Activas = deben aparecer cada periodo. Canceladas = NO deben reaparecer (si
+reaparecen, es un cargo no deseado → avisar). Guardar `Monto esperado`
+permite detectar cambios de precio (ej. Apple Music $6.78→$7.91).
 
 **Debts**: `Name`, `Amount Owed`, `Status` (Activa/Pagada), `Priority`
 (Sin urgencia/Urgente), `Target Date`, `Notes`, `Pagos` (relation ←
@@ -110,6 +170,41 @@ Tipo=Reembolso, sin `Budget Line`/no cuentan contra el presupuesto.
 - Salet — $176.00 (préstamo previo, parcialmente devuelto; esto es lo que
   queda pendiente — confirmado explícitamente por Samanta, no asumir que un
   pago posterior lo reduce sin que ella lo confirme).
+
+**Pendientes / a vigilar** (al 16-sep 2026):
+- **Provisional Credit de agosto ($844.90, Claim-Ref #2608190033026)** SIGUE
+  EN PROCESO con Wells Fargo. Es un batch de reversiones de overdraft fees +
+  créditos provisionales del 21-25 ago. Si el banco resuelve en contra de
+  Samanta, se revierte y el balance de Checking baja ~$845. Está anotado en
+  las Notes de esa transacción y en el dashboard.
+- **Tarjeta cancelada**: canceló la tarjeta de crédito de varias suscripciones.
+  Si llega email pidiendo actualizar método de pago de algo activo (ej. LA
+  Fitness ya migró a tarjeta nueva), avisar.
+
+## Estado de cuentas (reconciliación al 16-sep 2026)
+
+Las 4 filas de Account Balances cuadran exacto (Diferencia $0.00, verificado
+con código):
+
+| Cuenta | Mes | Start | Suma movs | Calc/Real |
+|---|---|---|---|---|
+| Contribuciones (Checking) | Ago | −$141.96 | +$631.46 | $489.50 |
+| Contribuciones (Checking) | Sep | $489.50 | +$26.63 | $516.13 |
+| Abundancia Capital (Savings) | Ago | $4.00 | +$1.00 | $5.00 |
+| Abundancia Capital (Savings) | Sep | $5.00 | +$2.00 | $7.00 |
+
+Nota: el balance inicial de Checking de agosto (−$141.96) y el fin de agosto
+($489.50) los confirmó Samanta del statement real. Los de Savings de agosto
+son reconstruidos hacia atrás desde el balance actual ($7.00) — alta confianza
+pero sin statement independiente. Septiembre de ambas cuentas cuadra contra
+capturas de balance actual.
+
+## Dashboard — 📊 Resumen mensual
+
+Página con el checklist mensual + accesos a todas las bases + sección de
+pendientes a vigilar. Es el punto de entrada del uso real (control de
+suscripciones y cuadre), no el presupuesto. Cada mes Samanta abre esa página
+y sigue el checklist.
 
 ## Gotchas / notas de parseo (para el próximo mes)
 
