@@ -63,7 +63,16 @@ export default function Home() {
         window.location.href = "/login";
         return;
       }
-      if (!res.ok) throw new Error("No se pudo cargar");
+      if (!res.ok) {
+        let detail = "";
+        try {
+          const body = await res.json();
+          detail = body?.error ?? "";
+        } catch {
+          // ignore
+        }
+        throw new Error(detail || `No se pudo cargar (${res.status})`);
+      }
       setData(await res.json());
     } catch (e: any) {
       setError(e?.message ?? "Error");
