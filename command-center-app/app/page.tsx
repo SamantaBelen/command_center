@@ -16,6 +16,8 @@ type Task = {
 };
 type PlanData = {
   today: string;
+  which: "this" | "next";
+  bucket: string;
   weekStart: string;
   weekEnd: string;
   weekDays: string[];
@@ -247,6 +249,10 @@ function shortDayES(iso: string): string {
   }).format(dt);
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
+function isSundayISO(iso: string): boolean {
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d)).getUTCDay() === 0;
+}
 function dowLetter(iso: string): string {
   const [y, m, d] = iso.split("-").map(Number);
   const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay(); // 0 Sun..6 Sat
@@ -313,6 +319,7 @@ export default function Home() {
   const [weekLoading, setWeekLoading] = useState(false);
   const [planData, setPlanData] = useState<PlanData | null>(null);
   const [planLoading, setPlanLoading] = useState(false);
+  const [planWeek, setPlanWeek] = useState<"this" | "next">("this");
 
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressFired = useRef(false);
@@ -396,10 +403,12 @@ export default function Home() {
     }
   }, []);
 
-  const loadPlan = useCallback(async () => {
+  const loadPlan = useCallback(async (which: "this" | "next" = "this") => {
     setPlanLoading(true);
     try {
-      const res = await fetch("/api/plan", { cache: "no-store" });
+      const res = await fetch(`/api/plan?week=${which === "next" ? "next" : "this"}`, {
+        cache: "no-store",
+      });
       if (res.status === 401) {
         window.location.href = "/login";
         return;
@@ -593,8 +602,11 @@ export default function Home() {
       setView("semana");
       loadWeek();
     } else if (tab === "planear") {
+      // On Sundays, default to planning next week.
+      const w: "this" | "next" = data && isSundayISO(data.today) ? "next" : "this";
       setView("planear");
-      loadPlan();
+      setPlanWeek(w);
+      loadPlan(w);
     } else {
       openSoon(tab === "proyectos" ? "Proyectos" : "Perfil");
     }
@@ -619,10 +631,10 @@ export default function Home() {
         body: JSON.stringify({ id: t.id, plan: "Agendado", date: dayISO }),
       });
       if (!res.ok) throw new Error();
-      loadPlan();
+      loadPlan(planWeek);
     } catch {
       setError("No se pudo asignar la tarea");
-      loadPlan();
+      loadPlan(planWeek);
     }
   }
 
@@ -941,6 +953,26 @@ export default function Home() {
           <div className="section-head">
             <h2 className="section-title serif">Planea tu semana</h2>
           </div>
+          <div className="seg">
+            <button
+              className={planWeek === "this" ? "seg-on" : ""}
+              onClick={() => {
+                setPlanWeek("this");
+                loadPlan("this");
+              }}
+            >
+              Esta semana
+            </button>
+            <button
+              className={planWeek === "next" ? "seg-on" : ""}
+              onClick={() => {
+                setPlanWeek("next");
+                loadPlan("next");
+              }}
+            >
+              La próxima semana
+            </button>
+          </div>
           {planLoading && !planData ? (
             <div className="loading">Cargando…</div>
           ) : planData ? (
@@ -984,7 +1016,7 @@ export default function Home() {
 
                   <div className="section-head" style={{ marginTop: 26 }}>
                     <h3 className="bucket-title" style={{ margin: 0 }}>
-                      Esta semana · por repartir
+                      {planData.bucket} · por repartir
                     </h3>
                     <span className="count">{planData.pool.length}</span>
                   </div>
