@@ -1086,10 +1086,12 @@ function BottomNav({
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"
             strokeLinecap="round" strokeLinejoin="round">
-            <rect x="4" y="5" width="16" height="16" rx="2" />
-            <path d="M4 9h16M8 3v4M16 3v4" />
+            <path d="M4 6l1.4 1.4L8 4.8" />
+            <path d="M4 12l1.4 1.4L8 10.8" />
+            <path d="M4 18h2" />
+            <path d="M11 6h9M11 12h9M11 18h9" />
           </svg>
-          Semana
+          Pendientes
         </button>
         <button className="tab" onClick={() => onNav("proyectos")}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"
