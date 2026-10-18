@@ -258,6 +258,14 @@ function dowLetter(iso: string): string {
   const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay(); // 0 Sun..6 Sat
   return ["D", "L", "M", "M", "J", "V", "S"][dow];
 }
+function clockES(dateStr: string): string {
+  if (!(dateStr.length > 10 && dateStr.includes("T"))) return "";
+  return new Intl.DateTimeFormat("es-ES", {
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: "America/New_York",
+  }).format(new Date(dateStr));
+}
 function fmtMin(total: number): string {
   if (!total) return "";
   const h = Math.floor(total / 60);
@@ -1056,6 +1064,50 @@ export default function Home() {
                   <p className="hint">
                     Toca una tarea y elige el día. El balance de arriba se actualiza.
                   </p>
+
+                  <h3 className="bucket-title" style={{ marginTop: 28 }}>
+                    La semana
+                  </h3>
+                  <div className="agenda">
+                    {planData.weekDays.map((iso) => {
+                      const dayTasks = planData.week
+                        .filter((t) => (t.date ?? "").slice(0, 10) === iso)
+                        .sort((a, b) => (a.date ?? "").localeCompare(b.date ?? ""));
+                      const isToday = iso === planData.today;
+                      return (
+                        <div key={iso} className={`agenda-day ${isToday ? "agenda-now" : ""}`}>
+                          <div
+                            className="agenda-head"
+                            onClick={() => {
+                              setView("hoy");
+                              load(iso);
+                            }}
+                          >
+                            <span className="agenda-dow">{shortDayES(iso)}</span>
+                            {isToday && <span className="agenda-today">hoy</span>}
+                            <span className="agenda-n">{dayTasks.length || ""}</span>
+                          </div>
+                          {dayTasks.length === 0 ? (
+                            <div className="agenda-empty">Libre</div>
+                          ) : (
+                            dayTasks.map((t) => (
+                              <div
+                                key={t.id}
+                                className="agenda-item"
+                                onClick={() => openTaskDetail(t)}
+                              >
+                                <i className="dot" style={{ background: statusColor(t.status) }} />
+                                <span className="agenda-title">{t.title}</span>
+                                {clockES(t.date ?? "") && (
+                                  <span className="agenda-time">{clockES(t.date ?? "")}</span>
+                                )}
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </>
               );
             })()
