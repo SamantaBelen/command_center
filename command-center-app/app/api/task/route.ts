@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { setTaskStatus, createTask, getTaskDetail, setTaskPlan, deleteTask } from "@/lib/notion";
+import { setTaskStatus, createTask, getTaskDetail, setTaskPlan, deleteTask, setTaskFields } from "@/lib/notion";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -51,6 +51,11 @@ export async function POST(req: Request) {
     }
 
     if (typeof body?.id === "string" && body.id) {
+      // Set scoring/analysis fields.
+      if (body?.fields && typeof body.fields === "object") {
+        await setTaskFields(body.id, body.fields);
+        return NextResponse.json({ ok: true });
+      }
       // Change the planning bucket (optionally clearing or setting the date).
       if (typeof body?.plan === "string") {
         let dateArg: string | null | undefined;

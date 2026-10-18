@@ -24,6 +24,9 @@ export type Task = {
   date: string | null; // may be "YYYY-MM-DD" or a full ISO timestamp
   plan: string | null; // "Planeación" bucket: Agendado / Esta semana / Próxima semana / Eventualmente
   estMin: number | null; // Estimated Time (min)
+  importance: string | null; // Urgent / Need / Required / Schedule / Want
+  impact: number | null; // 0–5
+  effort: number | null; // 0–5
 };
 
 export type Habit = {
@@ -56,6 +59,9 @@ function mapTaskPage(page: any): Task {
     date: props["Date"]?.date?.start ?? null,
     plan: props["Planeación"]?.select?.name ?? null,
     estMin: props["Estimated Time (min)"]?.number ?? null,
+    importance: props["Importance"]?.select?.name ?? null,
+    impact: props["Impact"]?.number ?? null,
+    effort: props["Effort"]?.number ?? null,
   };
 }
 
@@ -343,7 +349,32 @@ export async function createTask(title: string, opts: CreateOpts = {}): Promise<
     date,
     plan: opts.plan ?? null,
     estMin: null,
+    importance: null,
+    impact: null,
+    effort: null,
   };
+}
+
+// Set any of the scoring/analysis fields. Omitted keys are left unchanged;
+// a key set to null clears that property.
+export type TaskFields = {
+  priority?: string | null;
+  importance?: string | null;
+  estMin?: number | null;
+  impact?: number | null;
+  effort?: number | null;
+};
+export async function setTaskFields(id: string, fields: TaskFields): Promise<void> {
+  const properties: any = {};
+  if ("priority" in fields)
+    properties.Priority = fields.priority ? { select: { name: fields.priority } } : { select: null };
+  if ("importance" in fields)
+    properties.Importance = fields.importance ? { select: { name: fields.importance } } : { select: null };
+  if ("estMin" in fields)
+    properties["Estimated Time (min)"] = { number: fields.estMin ?? null };
+  if ("impact" in fields) properties.Impact = { number: fields.impact ?? null };
+  if ("effort" in fields) properties.Effort = { number: fields.effort ?? null };
+  await notion.pages.update({ page_id: id, properties });
 }
 
 // Set the planning bucket. dateArg: null clears the Date, a string sets it,
