@@ -74,6 +74,24 @@ const statusColor = (s: string) => STATUS_META[s]?.color ?? "#9a8f84";
 const prioES = (p: string) =>
   ({ High: "Alta", Medium: "Media", Low: "Baja" } as Record<string, string>)[p] ?? p;
 
+// Suggested priority from Importancia + Impacto vs Esfuerzo (the agreed table).
+function suggestPriority(t: {
+  importance: string | null;
+  impact: number | null;
+  effort: number | null;
+}): string | null {
+  const { importance: imp, impact, effort } = t;
+  if (imp == null && impact == null && effort == null) return null;
+  // Alta
+  if (imp === "Urgent" || imp === "Need") return "High";
+  if (impact != null && effort != null && impact >= 4 && effort <= 2) return "High";
+  // Baja
+  if (imp === "Want") return "Low";
+  if (impact != null && impact <= 2) return "Low";
+  if (impact != null && effort != null && effort >= 4 && impact <= 3) return "Low";
+  return "Medium";
+}
+
 const PRIORITY_OPTS = [
   { v: "High", l: "Alta" },
   { v: "Medium", l: "Media" },
@@ -1440,24 +1458,42 @@ export default function Home() {
                   </p>
                 )}
 
-                <div className="q">
-                  <div className="q-label">Prioridad</div>
-                  <div className="chips">
-                    {PRIORITY_OPTS.map((o) => (
-                      <button
-                        key={o.v}
-                        className={`chip ${activeTask.priority === o.v ? "chip-on" : ""}`}
-                        onClick={() =>
-                          setField(activeTask, {
-                            priority: activeTask.priority === o.v ? null : o.v,
-                          })
-                        }
-                      >
-                        {o.l}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+                {(() => {
+                  const sug = suggestPriority(activeTask);
+                  const showSug = sug && sug !== activeTask.priority;
+                  return (
+                    <div className="q">
+                      <div className="q-head">
+                        <div className="q-label">Prioridad</div>
+                        {showSug && (
+                          <button
+                            className="suggest-pill"
+                            onClick={() => setField(activeTask, { priority: sug })}
+                          >
+                            ✦ Sugerida: {prioES(sug!)}
+                          </button>
+                        )}
+                      </div>
+                      <div className="chips">
+                        {PRIORITY_OPTS.map((o) => (
+                          <button
+                            key={o.v}
+                            className={`chip ${activeTask.priority === o.v ? "chip-on" : ""} ${
+                              sug === o.v && activeTask.priority !== o.v ? "chip-suggested" : ""
+                            }`}
+                            onClick={() =>
+                              setField(activeTask, {
+                                priority: activeTask.priority === o.v ? null : o.v,
+                              })
+                            }
+                          >
+                            {o.l}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 <div className="q">
                   <div className="q-label">Importancia</div>

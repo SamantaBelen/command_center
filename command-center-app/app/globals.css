@@ -532,6 +532,32 @@ textarea,
   margin: 0 2px 8px;
   letter-spacing: 0.3px;
 }
+.q-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.suggest-pill {
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--burgundy);
+  background: var(--card);
+  border: 1px solid var(--burgundy-soft);
+  border-radius: 999px;
+  padding: 4px 11px;
+  margin-bottom: 8px;
+  cursor: pointer;
+}
+.suggest-pill:active {
+  background: var(--card-2);
+}
+.chip-suggested {
+  border-color: var(--burgundy);
+  border-style: dashed;
+  color: var(--burgundy);
+}
 .chips {
   display: flex;
   flex-wrap: wrap;
