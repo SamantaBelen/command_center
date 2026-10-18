@@ -718,8 +718,8 @@ export default function Home() {
             )}
             {sheet === "plan" && activeTask && (
               <>
-                <h3 className="sheet-title serif">Mover tarea</h3>
-                <p className="sheet-sub">{activeTask.title}</p>
+                <h3 className="sheet-title serif">{activeTask.title}</h3>
+                <p className="sheet-sub">Mover a…</p>
                 <div className="sheet-form">
                   {BUCKETS.map((b) => (
                     <button
