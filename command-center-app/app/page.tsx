@@ -452,21 +452,30 @@ export default function Home() {
 
   async function openTaskDetail(t: Task) {
     setActiveTask(t);
-    setTaskDetail(basicDetail(t)); // open full immediately, no empty→tall jump
-    setSheet("task");
-    const started = Date.now();
+    let opened = false;
+    const reveal = (detail: TaskDetailData) => {
+      if (opened) return;
+      opened = true;
+      setTaskDetail(detail);
+      setSheet("task");
+    };
+    // If Notion is slow, open with the basics so the tap feels responsive.
+    const fallback = setTimeout(() => reveal(basicDetail(t)), 450);
     try {
       const res = await fetch(`/api/task?id=${t.id}`, { cache: "no-store" });
-      if (res.ok) {
-        const full = await res.json();
-        // apply after the slide-up settles so it fills in, not mid-animation
-        const wait = Math.max(0, 340 - (Date.now() - started));
-        setTimeout(() => {
-          setTaskDetail((cur) => (cur && cur.id === full.id ? full : cur));
-        }, wait);
+      const full = res.ok ? await res.json() : null;
+      clearTimeout(fallback);
+      if (full && !opened) {
+        reveal(full); // fast path: open once, already at final height
+      } else if (full) {
+        // basics were shown first (slow network): fill in the rest
+        setTaskDetail((cur) => (cur && cur.id === full.id ? full : cur));
+      } else {
+        reveal(basicDetail(t));
       }
     } catch {
-      // the sheet still shows the basics
+      clearTimeout(fallback);
+      reveal(basicDetail(t));
     }
   }
 
