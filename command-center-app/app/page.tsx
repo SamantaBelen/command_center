@@ -20,6 +20,23 @@ type Habit = {
   order: number | null;
 };
 type Data = { today: string; date: string; tasks: Task[]; habits: Habit[] };
+type TaskDetailData = {
+  id: string;
+  url: string | null;
+  title: string;
+  lastEdited: string | null;
+  fields: { label: string; value: string }[];
+};
+
+const LABEL_ES: Record<string, string> = {
+  Status: "Estado",
+  Priority: "Prioridad",
+  Date: "Fecha",
+  Importance: "Importancia",
+  "Task Type": "Tipo",
+  "Estimated Time (min)": "Tiempo estimado (min)",
+};
+const labelES = (l: string) => LABEL_ES[l] ?? l;
 
 /* ---------- small icons ---------- */
 function CheckMark() {
@@ -195,11 +212,14 @@ export default function Home() {
   const [data, setData] = useState<Data | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState<Set<string>>(new Set());
-  const [sheet, setSheet] = useState<null | "habits" | "add" | "soon">(null);
+  const [sheet, setSheet] = useState<null | "habits" | "add" | "soon" | "task">(null);
   const [soonLabel, setSoonLabel] = useState("");
   const [newTask, setNewTask] = useState("");
   const [adding, setAdding] = useState(false);
   const [switching, setSwitching] = useState(false);
+  const [activeTask, setActiveTask] = useState<Task | null>(null);
+  const [taskDetail, setTaskDetail] = useState<TaskDetailData | null>(null);
+  const [taskLoading, setTaskLoading] = useState(false);
 
   const load = useCallback(async (dateISO?: string) => {
     setError(null);
@@ -351,6 +371,21 @@ export default function Home() {
     setSheet("soon");
   }
 
+  async function openTaskDetail(t: Task) {
+    setActiveTask(t);
+    setTaskDetail(null);
+    setSheet("task");
+    setTaskLoading(true);
+    try {
+      const res = await fetch(`/api/task?id=${t.id}`, { cache: "no-store" });
+      if (res.ok) setTaskDetail(await res.json());
+    } catch {
+      // the sheet still shows the basics
+    } finally {
+      setTaskLoading(false);
+    }
+  }
+
   /* ----- render states ----- */
   if (error && !data) {
     return (
@@ -448,10 +483,15 @@ export default function Home() {
               const done = t.status === "Done";
               return (
                 <div key={t.id} className={`item ${done ? "done" : ""}`}>
-                  <span onClick={() => toggleTask(t)}>
+                  <span
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleTask(t);
+                    }}
+                  >
                     <CheckMark />
                   </span>
-                  <div className="item-body" onClick={() => toggleTask(t)}>
+                  <div className="item-body" onClick={() => openTaskDetail(t)}>
                     <div className="item-title">{t.title}</div>
                     <div className="item-meta">
                       <TypeIcon type={t.type} />
@@ -460,7 +500,9 @@ export default function Home() {
                       {t.date && <span>{taskWhen(t.date, data.today)}</span>}
                     </div>
                   </div>
-                  <Chevron />
+                  <span onClick={() => openTaskDetail(t)}>
+                    <Chevron />
+                  </span>
                 </div>
               );
             })}
@@ -542,6 +584,49 @@ export default function Home() {
                 </form>
               </>
             )}
+            {sheet === "task" && activeTask && (() => {
+              const live = data.tasks.find((x) => x.id === activeTask.id) ?? activeTask;
+              const done = live.status === "Done";
+              return (
+                <>
+                  <h3 className="sheet-title serif">{activeTask.title}</h3>
+                  <button
+                    className={`btn ${done ? "btn-ghost" : ""}`}
+                    style={{ width: "100%", marginTop: 6, marginBottom: 16 }}
+                    onClick={() => toggleTask(live)}
+                  >
+                    {done ? "Marcar como no hecha" : "Marcar como hecha ✓"}
+                  </button>
+                  {taskLoading && <div className="muted center">Cargando detalle…</div>}
+                  {taskDetail && taskDetail.fields.length > 0 && (
+                    <div className="detail">
+                      {taskDetail.fields.map((f) => (
+                        <div className="detail-row" key={f.label}>
+                          <span className="detail-label">{labelES(f.label)}</span>
+                          <span className="detail-value">{f.value}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {taskDetail?.url && (
+                    <a
+                      className="btn btn-ghost"
+                      href={taskDetail.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{
+                        display: "block",
+                        textAlign: "center",
+                        textDecoration: "none",
+                        marginTop: 14,
+                      }}
+                    >
+                      Abrir en Notion ↗
+                    </a>
+                  )}
+                </>
+              );
+            })()}
             {sheet === "soon" && (
               <div className="soon">
                 <span className="big">🌱</span>

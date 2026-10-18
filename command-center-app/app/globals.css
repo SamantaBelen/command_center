@@ -531,6 +531,47 @@ body {
 .btn:disabled {
   opacity: 0.5;
 }
+.btn-ghost {
+  background: var(--card);
+  color: var(--burgundy);
+  border: 1px solid var(--line);
+}
+.btn-ghost:active {
+  background: var(--card-2);
+}
+.muted {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+/* task detail */
+.detail {
+  display: flex;
+  flex-direction: column;
+}
+.detail-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 13px 2px;
+  border-bottom: 1px solid var(--line);
+}
+.detail-row:last-child {
+  border-bottom: none;
+}
+.detail-label {
+  color: var(--muted);
+  font-size: 14px;
+  flex: 0 0 auto;
+}
+.detail-value {
+  color: var(--ink);
+  font-size: 15px;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
 .sheet .soon {
   text-align: center;
   padding: 26px 10px 10px;

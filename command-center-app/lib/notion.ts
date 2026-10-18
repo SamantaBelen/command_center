@@ -118,6 +118,132 @@ export async function getHabits(dateISO: string): Promise<Habit[]> {
   return habits;
 }
 
+export type TaskDetailField = { label: string; value: string };
+export type TaskDetail = {
+  id: string;
+  url: string | null;
+  title: string;
+  lastEdited: string | null;
+  fields: TaskDetailField[];
+};
+
+function formatDate(prop: any): string {
+  const start: string | undefined = prop?.date?.start;
+  const end: string | undefined = prop?.date?.end;
+  if (!start) return "";
+  const fmt = (s: string) => {
+    const hasTime = s.length > 10 && s.includes("T");
+    return new Intl.DateTimeFormat("es-ES", {
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+      ...(hasTime ? { hour: "numeric", minute: "2-digit" } : {}),
+      timeZone: "America/New_York",
+    }).format(new Date(s));
+  };
+  return end ? `${fmt(start)} → ${fmt(end)}` : fmt(start);
+}
+
+function formatValue(p: any): string {
+  switch (p?.type) {
+    case "title":
+    case "rich_text":
+      return (p[p.type] ?? []).map((t: any) => t?.plain_text ?? "").join("").trim();
+    case "select":
+      return p.select?.name ?? "";
+    case "status":
+      return p.status?.name ?? "";
+    case "multi_select":
+      return (p.multi_select ?? []).map((s: any) => s.name).join(", ");
+    case "date":
+      return formatDate(p);
+    case "number":
+      return p.number === null || p.number === undefined ? "" : String(p.number);
+    case "checkbox":
+      return p.checkbox ? "Sí" : "No";
+    case "url":
+      return p.url ?? "";
+    case "email":
+      return p.email ?? "";
+    case "phone_number":
+      return p.phone_number ?? "";
+    case "people":
+      return (p.people ?? []).map((u: any) => u?.name ?? "Alguien").join(", ");
+    case "relation": {
+      const n = (p.relation ?? []).length;
+      return n ? `${n} vinculada${n > 1 ? "s" : ""}` : "";
+    }
+    case "files":
+      return (p.files ?? []).length ? `${p.files.length} archivo(s)` : "";
+    case "created_time":
+      return formatDate({ date: { start: p.created_time } });
+    case "last_edited_time":
+      return formatDate({ date: { start: p.last_edited_time } });
+    case "formula": {
+      const f = p.formula;
+      if (!f) return "";
+      if (f.type === "string") return f.string ?? "";
+      if (f.type === "number") return f.number === null ? "" : String(f.number);
+      if (f.type === "boolean") return f.boolean ? "Sí" : "No";
+      if (f.type === "date") return formatDate(f);
+      return "";
+    }
+    case "rollup": {
+      const r = p.rollup;
+      if (!r) return "";
+      if (r.type === "number") return r.number === null ? "" : String(r.number);
+      if (r.type === "date") return formatDate(r);
+      if (r.type === "array") return `${(r.array ?? []).length} elemento(s)`;
+      return "";
+    }
+    default:
+      return "";
+  }
+}
+
+// Preferred ordering for the detail view; everything else follows alphabetically.
+const FIELD_ORDER = [
+  "Status",
+  "Priority",
+  "Date",
+  "Importance",
+  "Task Type",
+  "Estimated Time (min)",
+];
+
+export async function getTaskDetail(id: string): Promise<TaskDetail> {
+  const page: any = await notion.pages.retrieve({ page_id: id });
+  const props = page.properties ?? {};
+
+  let title = "";
+  const fields: TaskDetailField[] = [];
+  for (const [label, prop] of Object.entries<any>(props)) {
+    if (prop?.type === "title") {
+      title = formatValue(prop);
+      continue;
+    }
+    const value = formatValue(prop);
+    if (value) fields.push({ label, value });
+  }
+
+  fields.sort((a, b) => {
+    const ai = FIELD_ORDER.indexOf(a.label);
+    const bi = FIELD_ORDER.indexOf(b.label);
+    const aa = ai === -1 ? 999 : ai;
+    const bb = bi === -1 ? 999 : bi;
+    if (aa !== bb) return aa - bb;
+    return a.label.localeCompare(b.label);
+  });
+
+  return {
+    id: page.id,
+    url: page.url ?? null,
+    title: title || "(sin título)",
+    lastEdited: page.last_edited_time ?? null,
+    fields,
+  };
+}
+
 export async function setTaskStatus(id: string, status: string): Promise<void> {
   await notion.pages.update({
     page_id: id,

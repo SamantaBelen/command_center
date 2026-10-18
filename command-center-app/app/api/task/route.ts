@@ -1,7 +1,23 @@
 import { NextResponse } from "next/server";
-import { setTaskStatus, createTask } from "@/lib/notion";
+import { setTaskStatus, createTask, getTaskDetail } from "@/lib/notion";
 
 export const runtime = "nodejs";
+
+export async function GET(req: Request) {
+  try {
+    const id = new URL(req.url).searchParams.get("id");
+    if (!id) {
+      return NextResponse.json({ error: "id requerido" }, { status: 400 });
+    }
+    const detail = await getTaskDetail(id);
+    return NextResponse.json(detail);
+  } catch (e: any) {
+    return NextResponse.json(
+      { error: e?.message ?? "Notion error" },
+      { status: 500 }
+    );
+  }
+}
 
 export async function POST(req: Request) {
   try {
