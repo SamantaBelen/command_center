@@ -118,6 +118,12 @@ body {
 .day {
   text-align: center;
   padding: 6px 0;
+  cursor: pointer;
+  border-radius: 12px;
+  transition: background 0.15s ease;
+}
+.day:active {
+  background: var(--card-2);
 }
 .dow {
   font-size: 12px;
@@ -134,16 +140,22 @@ body {
   line-height: 34px;
   margin: 0 auto;
   border-radius: 50%;
-  transition: background 0.2s ease, color 0.2s ease;
+  transition: background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
 }
-.day.today .dnum {
+/* selected day */
+.day.sel .dnum {
   background: var(--burgundy);
   color: #f6efe9;
   font-weight: 600;
 }
-.day.today .dow {
+.day.sel .dow {
   color: var(--burgundy);
   font-weight: 700;
+}
+/* today, when it is not the selected day: a soft ring */
+.day.now:not(.sel) .dnum {
+  box-shadow: inset 0 0 0 1.6px var(--burgundy-soft);
+  color: var(--burgundy);
 }
 
 /* ---------- tea hero ---------- */

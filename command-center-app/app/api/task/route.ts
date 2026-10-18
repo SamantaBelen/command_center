@@ -9,7 +9,11 @@ export async function POST(req: Request) {
 
     // Create a new task.
     if (typeof body?.title === "string" && body.title.trim()) {
-      const task = await createTask(body.title.trim());
+      const date =
+        typeof body?.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(body.date)
+          ? body.date
+          : undefined;
+      const task = await createTask(body.title.trim(), date);
       return NextResponse.json({ ok: true, task });
     }
 

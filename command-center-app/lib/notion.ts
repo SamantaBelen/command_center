@@ -43,14 +43,18 @@ function firstMultiSelect(prop: any): string | null {
   return null;
 }
 
-// Tasks due today or overdue, not Done / Cancel.
-export async function getTodayTasks(): Promise<Task[]> {
-  const today = todayET();
+// Tasks for a given day, not Done / Cancel.
+// For today we include overdue tasks (Date on-or-before today); for any other
+// day we show only the tasks dated exactly that day.
+export async function getTasks(dateISO: string, includeOverdue: boolean): Promise<Task[]> {
+  const dateFilter = includeOverdue
+    ? { property: "Date", date: { on_or_before: dateISO } }
+    : { property: "Date", date: { equals: dateISO } };
   const res = await notion.databases.query({
     database_id: TASKS_DB,
     filter: {
       and: [
-        { property: "Date", date: { on_or_before: today } },
+        dateFilter,
         { property: "Status", status: { does_not_equal: "Done" } },
         { property: "Status", status: { does_not_equal: "Cancel" } },
       ],
@@ -80,15 +84,14 @@ export async function getTodayTasks(): Promise<Task[]> {
   return tasks;
 }
 
-// Check-ins whose current period contains today: Period start <= today <= Period end.
-export async function getTodayHabits(): Promise<Habit[]> {
-  const today = todayET();
+// Check-ins whose period contains the given day: Period start <= day <= Period end.
+export async function getHabits(dateISO: string): Promise<Habit[]> {
   const res = await notion.databases.query({
     database_id: CHECKINS_DB,
     filter: {
       and: [
-        { property: "Period start", date: { on_or_before: today } },
-        { property: "Period end", date: { on_or_after: today } },
+        { property: "Period start", date: { on_or_before: dateISO } },
+        { property: "Period end", date: { on_or_after: dateISO } },
       ],
     },
     page_size: 200,
@@ -122,14 +125,14 @@ export async function setTaskStatus(id: string, status: string): Promise<void> {
   });
 }
 
-export async function createTask(title: string): Promise<Task> {
-  const today = todayET();
+export async function createTask(title: string, dateISO?: string): Promise<Task> {
+  const date = dateISO ?? todayET();
   const page: any = await notion.pages.create({
     parent: { database_id: TASKS_DB },
     properties: {
       Tasks: { title: [{ text: { content: title } }] },
       Status: { status: { name: "Not started" } },
-      Date: { date: { start: today } },
+      Date: { date: { start: date } },
     },
   });
   return {
@@ -138,7 +141,7 @@ export async function createTask(title: string): Promise<Task> {
     status: "Not started",
     priority: null,
     type: null,
-    date: today,
+    date,
   };
 }
 
