@@ -59,7 +59,16 @@ export async function POST(req: Request) {
         await setTaskPlan(body.id, body.plan, dateArg);
         return NextResponse.json({ ok: true });
       }
-      // Toggle status.
+      // Set an explicit status.
+      if (typeof body?.status === "string") {
+        const allowed = ["Not started", "In progress", "Waiting", "Done", "Cancel"];
+        if (!allowed.includes(body.status)) {
+          return NextResponse.json({ error: "estado inválido" }, { status: 400 });
+        }
+        await setTaskStatus(body.id, body.status);
+        return NextResponse.json({ ok: true });
+      }
+      // Toggle done.
       const status = body?.done ? "Done" : "Not started";
       await setTaskStatus(body.id, status);
       return NextResponse.json({ ok: true });
