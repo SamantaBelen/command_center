@@ -521,6 +521,7 @@ textarea,
   align-items: flex-end;
   justify-content: center;
   animation: fade 0.2s ease;
+  transition: padding-bottom 0.2s ease;
 }
 @keyframes fade {
   from {
