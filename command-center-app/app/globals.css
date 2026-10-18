@@ -152,17 +152,33 @@ body {
   margin-top: 16px;
   border-radius: var(--radius);
   overflow: hidden;
-  min-height: 168px;
+  min-height: 176px;
   display: flex;
   align-items: stretch;
   box-shadow: var(--shadow);
   cursor: pointer;
   border: 1px solid var(--line);
-  background: linear-gradient(105deg, #efe6d8 0%, #e7d9c6 46%, #d8c3ad 100%);
+  background-image: url("/img/hero-tea.png");
+  background-size: cover;
+  background-position: center right;
   transition: transform 0.12s ease;
 }
 .hero:active {
   transform: scale(0.992);
+}
+/* warm scrim so the text stays readable over the photo */
+.hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: linear-gradient(
+    100deg,
+    rgba(243, 236, 225, 0.92) 0%,
+    rgba(243, 236, 225, 0.78) 34%,
+    rgba(243, 236, 225, 0.22) 58%,
+    rgba(243, 236, 225, 0) 76%
+  );
 }
 .hero-text {
   position: relative;
@@ -171,7 +187,7 @@ body {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  max-width: 62%;
+  max-width: 64%;
 }
 .hero-label {
   font-size: 15px;
@@ -204,26 +220,6 @@ body {
   background: var(--burgundy);
   transition: width 0.4s ease;
 }
-/* decorative tea illustration on the right */
-.hero-art {
-  position: absolute;
-  right: -6px;
-  top: 0;
-  bottom: 0;
-  width: 48%;
-  z-index: 1;
-  background:
-    radial-gradient(60% 55% at 70% 45%, rgba(255, 252, 245, 0.55) 0%, rgba(255, 252, 245, 0) 60%);
-}
-.hero-art svg {
-  position: absolute;
-  right: 18px;
-  bottom: 14px;
-  width: 128px;
-  height: auto;
-  filter: drop-shadow(0 6px 12px rgba(74, 51, 38, 0.18));
-}
-
 /* ---------- section ---------- */
 .section {
   margin-top: 30px;
