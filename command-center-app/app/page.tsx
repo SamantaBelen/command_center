@@ -12,6 +12,15 @@ type Task = {
   type: string | null;
   date: string | null;
   plan: string | null;
+  estMin: number | null;
+};
+type PlanData = {
+  today: string;
+  weekStart: string;
+  weekEnd: string;
+  weekDays: string[];
+  week: Task[];
+  pool: Task[];
 };
 type Habit = {
   id: string;
@@ -228,6 +237,29 @@ function dayLabelES(iso: string): string {
   }).format(dt);
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
+function shortDayES(iso: string): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  const s = new Intl.DateTimeFormat("es-ES", {
+    weekday: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  }).format(dt);
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+function dowLetter(iso: string): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay(); // 0 Sun..6 Sat
+  return ["D", "L", "M", "M", "J", "V", "S"][dow];
+}
+function fmtMin(total: number): string {
+  if (!total) return "";
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  if (h && m) return `${h}h ${m}m`;
+  if (h) return `${h}h`;
+  return `${m}m`;
+}
 function taskWhen(dateStr: string | null, todayISO: string): string {
   if (!dateStr) return "";
   const datePart = dateStr.slice(0, 10);
@@ -266,7 +298,7 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState<Set<string>>(new Set());
   const [sheet, setSheet] = useState<
-    null | "habits" | "add" | "soon" | "task" | "plan" | "status"
+    null | "habits" | "add" | "soon" | "task" | "plan" | "status" | "assign"
   >(null);
   const [soonLabel, setSoonLabel] = useState("");
   const [newTask, setNewTask] = useState("");
@@ -276,9 +308,11 @@ export default function Home() {
   const [taskDetail, setTaskDetail] = useState<TaskDetailData | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  const [view, setView] = useState<"hoy" | "semana">("hoy");
+  const [view, setView] = useState<"hoy" | "semana" | "planear">("hoy");
   const [weekTasks, setWeekTasks] = useState<Task[] | null>(null);
   const [weekLoading, setWeekLoading] = useState(false);
+  const [planData, setPlanData] = useState<PlanData | null>(null);
+  const [planLoading, setPlanLoading] = useState(false);
 
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressFired = useRef(false);
@@ -359,6 +393,29 @@ export default function Home() {
       setError(e?.message ?? "Error");
     } finally {
       setWeekLoading(false);
+    }
+  }, []);
+
+  const loadPlan = useCallback(async () => {
+    setPlanLoading(true);
+    try {
+      const res = await fetch("/api/plan", { cache: "no-store" });
+      if (res.status === 401) {
+        window.location.href = "/login";
+        return;
+      }
+      if (res.ok) setPlanData(await res.json());
+      else {
+        let detail = "";
+        try {
+          detail = (await res.json())?.error ?? "";
+        } catch {}
+        setError(detail || "No se pudo cargar la planeación");
+      }
+    } catch (e: any) {
+      setError(e?.message ?? "Error");
+    } finally {
+      setPlanLoading(false);
     }
   }, []);
 
@@ -535,9 +592,43 @@ export default function Home() {
     } else if (tab === "semana") {
       setView("semana");
       loadWeek();
+    } else if (tab === "planear") {
+      setView("planear");
+      loadPlan();
     } else {
       openSoon(tab === "proyectos" ? "Proyectos" : "Perfil");
     }
+  }
+
+  // Assign a pool task to a specific day: set its date + Planeación "Agendado".
+  async function assignTaskToDay(t: Task, dayISO: string) {
+    setSheet(null);
+    setPlanData((p) =>
+      p
+        ? {
+            ...p,
+            pool: p.pool.filter((x) => x.id !== t.id),
+            week: [...p.week, { ...t, date: dayISO, plan: "Agendado" }],
+          }
+        : p
+    );
+    try {
+      const res = await fetch("/api/task", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: t.id, plan: "Agendado", date: dayISO }),
+      });
+      if (!res.ok) throw new Error();
+      loadPlan();
+    } catch {
+      setError("No se pudo asignar la tarea");
+      loadPlan();
+    }
+  }
+
+  function openAssignSheet(t: Task) {
+    setActiveTask(t);
+    setSheet("assign");
   }
 
   async function removeTask(t: Task) {
@@ -845,6 +936,101 @@ export default function Home() {
         </>
       )}
 
+      {view === "planear" && (
+        <section className="section" style={{ marginTop: 22 }}>
+          <div className="section-head">
+            <h2 className="section-title serif">Planea tu semana</h2>
+          </div>
+          {planLoading && !planData ? (
+            <div className="loading">Cargando…</div>
+          ) : planData ? (
+            (() => {
+              const stats = planData.weekDays.map((iso) => {
+                const dayTasks = planData.week.filter(
+                  (t) => (t.date ?? "").slice(0, 10) === iso
+                );
+                const mins = dayTasks.reduce((s, t) => s + (t.estMin ?? 0), 0);
+                return { iso, count: dayTasks.length, mins };
+              });
+              const useMins = stats.some((s) => s.mins > 0);
+              const max = Math.max(1, ...stats.map((s) => (useMins ? s.mins : s.count)));
+              return (
+                <>
+                  <div className="balance">
+                    {stats.map((s) => {
+                      const metric = useMins ? s.mins : s.count;
+                      const h = metric ? Math.max(12, Math.round((metric / max) * 100)) : 0;
+                      return (
+                        <button
+                          key={s.iso}
+                          className={`bal-day ${s.iso === planData.today ? "bal-today" : ""}`}
+                          onClick={() => {
+                            setView("hoy");
+                            load(s.iso);
+                          }}
+                        >
+                          <span className="bal-dow">{dowLetter(s.iso)}</span>
+                          <span className="bal-num">{Number(s.iso.slice(8, 10))}</span>
+                          <span className="bal-bar">
+                            <i style={{ height: `${h}%` }} />
+                          </span>
+                          <span className="bal-count">
+                            {useMins ? (s.mins ? fmtMin(s.mins) : "—") : s.count || "—"}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div className="section-head" style={{ marginTop: 26 }}>
+                    <h3 className="bucket-title" style={{ margin: 0 }}>
+                      Esta semana · por repartir
+                    </h3>
+                    <span className="count">{planData.pool.length}</span>
+                  </div>
+                  {planData.pool.length === 0 ? (
+                    <div className="empty">¡Semana repartida! ✦</div>
+                  ) : (
+                    <div className="list">
+                      {planData.pool.map((t) => (
+                        <div
+                          key={t.id}
+                          className="item"
+                          onClick={() => openAssignSheet(t)}
+                        >
+                          <div className="item-body">
+                            <div className="item-title">{t.title}</div>
+                            <div className="item-meta">
+                              <span
+                                className="status-chip"
+                                style={{ color: statusColor(t.status) }}
+                              >
+                                <i className="dot" style={{ background: statusColor(t.status) }} />
+                                {statusES(t.status)}
+                              </span>
+                              {t.estMin ? (
+                                <>
+                                  <span className="meta-sep">·</span>
+                                  <span>{fmtMin(t.estMin)}</span>
+                                </>
+                              ) : null}
+                            </div>
+                          </div>
+                          <span className="assign-cta">Asignar →</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <p className="hint">
+                    Toca una tarea y elige el día. El balance de arriba se actualiza.
+                  </p>
+                </>
+              );
+            })()
+          ) : null}
+        </section>
+      )}
+
       {/* add task */}
       <button className="fab" aria-label="Añadir tarea" onClick={() => setSheet("add")}>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
@@ -1026,6 +1212,32 @@ export default function Home() {
                 </div>
               </>
             )}
+            {sheet === "assign" && activeTask && planData && (
+              <>
+                <h3 className="sheet-title serif">{activeTask.title}</h3>
+                <p className="sheet-sub">¿Qué día la haces?</p>
+                <div className="assign-days">
+                  {planData.weekDays.map((iso) => {
+                    const n = planData.week.filter(
+                      (t) => (t.date ?? "").slice(0, 10) === iso
+                    ).length;
+                    return (
+                      <button
+                        key={iso}
+                        className="btn btn-ghost assign-day"
+                        onClick={() => assignTaskToDay(activeTask, iso)}
+                      >
+                        <span>
+                          {shortDayES(iso)}
+                          {iso === planData.today ? " · hoy" : ""}
+                        </span>
+                        {n > 0 && <span className="assign-load">{n}</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            )}
             {sheet === "soon" && (
               <div className="soon">
                 <span className="big">🌱</span>
@@ -1092,6 +1304,18 @@ function BottomNav({
             <path d="M11 6h9M11 12h9M11 18h9" />
           </svg>
           Pendientes
+        </button>
+        <button
+          className={`tab ${active === "planear" ? "active" : ""}`}
+          onClick={() => onNav("planear")}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"
+            strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3.5" y="5" width="17" height="16" rx="2" />
+            <path d="M3.5 9.5h17M8 3.5v3M16 3.5v3" />
+            <path d="M7.5 13h3M7.5 17h3M13.5 13h3M13.5 17h3" />
+          </svg>
+          Planear
         </button>
         <button className="tab" onClick={() => onNav("proyectos")}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"

@@ -23,6 +23,7 @@ export type Task = {
   type: string | null;
   date: string | null; // may be "YYYY-MM-DD" or a full ISO timestamp
   plan: string | null; // "Planeación" bucket: Agendado / Esta semana / Próxima semana / Eventualmente
+  estMin: number | null; // Estimated Time (min)
 };
 
 export type Habit = {
@@ -44,6 +45,55 @@ function firstMultiSelect(prop: any): string | null {
   return null;
 }
 
+function mapTaskPage(page: any): Task {
+  const props = page.properties ?? {};
+  return {
+    id: page.id,
+    title: plainTitle(props["Tasks"]) || "(sin título)",
+    status: props["Status"]?.status?.name ?? "",
+    priority: props["Priority"]?.select?.name ?? null,
+    type: firstMultiSelect(props["Task Type"]),
+    date: props["Date"]?.date?.start ?? null,
+    plan: props["Planeación"]?.select?.name ?? null,
+    estMin: props["Estimated Time (min)"]?.number ?? null,
+  };
+}
+
+// Mon–Sun ISO bounds for the week containing the given day.
+export function weekBounds(todayISO: string): { start: string; end: string; days: string[] } {
+  const [y, m, d] = todayISO.split("-").map(Number);
+  const base = new Date(Date.UTC(y, m - 1, d));
+  const toMonday = (base.getUTCDay() + 6) % 7;
+  const monday = new Date(base);
+  monday.setUTCDate(base.getUTCDate() - toMonday);
+  const iso = (dt: Date) =>
+    `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, "0")}-${String(dt.getUTCDate()).padStart(2, "0")}`;
+  const days: string[] = [];
+  for (let i = 0; i < 7; i++) {
+    const c = new Date(monday);
+    c.setUTCDate(monday.getUTCDate() + i);
+    days.push(iso(c));
+  }
+  return { start: days[0], end: days[6], days };
+}
+
+// Dated, not-done tasks whose Date falls within [startISO, endISO].
+export async function getWeekTasks(startISO: string, endISO: string): Promise<Task[]> {
+  const res = await notion.databases.query({
+    database_id: TASKS_DB,
+    filter: {
+      and: [
+        { property: "Date", date: { on_or_after: startISO } },
+        { property: "Date", date: { on_or_before: endISO } },
+        { property: "Status", status: { does_not_equal: "Done" } },
+        { property: "Status", status: { does_not_equal: "Cancel" } },
+      ],
+    },
+    page_size: 100,
+  });
+  return res.results.map(mapTaskPage);
+}
+
 // Tasks for a given day, not Done / Cancel.
 // For today we include overdue tasks (Date on-or-before today); for any other
 // day we show only the tasks dated exactly that day.
@@ -63,18 +113,7 @@ export async function getTasks(dateISO: string, includeOverdue: boolean): Promis
     page_size: 100,
   });
 
-  const tasks = res.results.map((page: any) => {
-    const props = page.properties ?? {};
-    return {
-      id: page.id,
-      title: plainTitle(props["Tasks"]) || "(sin título)",
-      status: props["Status"]?.status?.name ?? "",
-      priority: props["Priority"]?.select?.name ?? null,
-      type: firstMultiSelect(props["Task Type"]),
-      date: props["Date"]?.date?.start ?? null,
-      plan: props["Planeación"]?.select?.name ?? null,
-    };
-  });
+  const tasks = res.results.map(mapTaskPage);
 
   // Earliest first; undated last.
   tasks.sort((a, b) => {
@@ -267,18 +306,7 @@ export async function getPlannedTasks(): Promise<Task[]> {
     page_size: 100,
   });
 
-  return res.results.map((page: any) => {
-    const props = page.properties ?? {};
-    return {
-      id: page.id,
-      title: plainTitle(props["Tasks"]) || "(sin título)",
-      status: props["Status"]?.status?.name ?? "",
-      priority: props["Priority"]?.select?.name ?? null,
-      type: firstMultiSelect(props["Task Type"]),
-      date: props["Date"]?.date?.start ?? null,
-      plan: props["Planeación"]?.select?.name ?? null,
-    };
-  });
+  return res.results.map(mapTaskPage);
 }
 
 type CreateOpts = { date?: string | null; plan?: string | null };
@@ -314,6 +342,7 @@ export async function createTask(title: string, opts: CreateOpts = {}): Promise<
     type: null,
     date,
     plan: opts.plan ?? null,
+    estMin: null,
   };
 }
 
