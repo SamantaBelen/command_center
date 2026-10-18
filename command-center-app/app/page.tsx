@@ -795,6 +795,9 @@ export default function Home() {
               <button className="refresh" onClick={() => load(data.date)}>
                 Actualizar
               </button>
+              {process.env.NEXT_PUBLIC_BUILD && (
+                <p className="build">versión {process.env.NEXT_PUBLIC_BUILD}</p>
+              )}
             </div>
           </div>
         </>

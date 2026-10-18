@@ -392,6 +392,12 @@ textarea,
   color: var(--muted-2);
   text-align: center;
 }
+.build {
+  margin: 10px 0 0;
+  font-size: 10.5px;
+  color: var(--muted-2);
+  opacity: 0.6;
+}
 
 /* ---------- planning (Semana) buckets ---------- */
 .bucket {
