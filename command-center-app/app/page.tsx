@@ -13,6 +13,9 @@ type Task = {
   date: string | null;
   plan: string | null;
   estMin: number | null;
+  importance: string | null;
+  impact: number | null;
+  effort: number | null;
 };
 type PlanData = {
   today: string;
@@ -68,6 +71,31 @@ const STATUS_META: Record<string, { es: string; color: string }> = {
 const STATUS_OPTIONS = ["Not started", "In progress", "Waiting", "Done"];
 const statusES = (s: string) => STATUS_META[s]?.es ?? s;
 const statusColor = (s: string) => STATUS_META[s]?.color ?? "#9a8f84";
+const prioES = (p: string) =>
+  ({ High: "Alta", Medium: "Media", Low: "Baja" } as Record<string, string>)[p] ?? p;
+
+const PRIORITY_OPTS = [
+  { v: "High", l: "Alta" },
+  { v: "Medium", l: "Media" },
+  { v: "Low", l: "Baja" },
+];
+const IMPORTANCE_OPTS = [
+  { v: "Urgent", l: "Urgente" },
+  { v: "Need", l: "Necesaria" },
+  { v: "Required", l: "Requerida" },
+  { v: "Schedule", l: "Programar" },
+  { v: "Want", l: "Quiero" },
+];
+const TIME_OPTS = [
+  { v: 15, l: "15m" },
+  { v: 30, l: "30m" },
+  { v: 45, l: "45m" },
+  { v: 60, l: "1h" },
+  { v: 90, l: "1h30" },
+  { v: 120, l: "2h" },
+  { v: 180, l: "3h" },
+];
+const SCALE = [1, 2, 3, 4, 5];
 
 const CADENCE_ES: Record<string, string> = {
   daily: "Diario",
@@ -312,7 +340,7 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState<Set<string>>(new Set());
   const [sheet, setSheet] = useState<
-    null | "habits" | "add" | "soon" | "task" | "plan" | "status" | "assign"
+    null | "habits" | "add" | "soon" | "task" | "plan" | "status" | "assign" | "analyze"
   >(null);
   const [soonLabel, setSoonLabel] = useState("");
   const [newTask, setNewTask] = useState("");
@@ -649,6 +677,47 @@ export default function Home() {
   function openAssignSheet(t: Task) {
     setActiveTask(t);
     setSheet("assign");
+  }
+
+  function openAnalyzeSheet(t: Task) {
+    setActiveTask(t);
+    setSheet("analyze");
+  }
+
+  // Save one or more scoring fields (Priority, Importance, estMin, Impact, Effort).
+  async function setField(t: Task, patch: Partial<Task>) {
+    const apply = (x: Task) => (x.id === t.id ? { ...x, ...patch } : x);
+    setPlanData((p) =>
+      p ? { ...p, pool: p.pool.map(apply), week: p.week.map(apply) } : p
+    );
+    setActiveTask((cur) => (cur && cur.id === t.id ? { ...cur, ...patch } : cur));
+    try {
+      const fields: any = {};
+      if ("priority" in patch) fields.priority = patch.priority;
+      if ("importance" in patch) fields.importance = patch.importance;
+      if ("estMin" in patch) fields.estMin = patch.estMin;
+      if ("impact" in patch) fields.impact = patch.impact;
+      if ("effort" in patch) fields.effort = patch.effort;
+      const res = await fetch("/api/task", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: t.id, fields }),
+      });
+      if (!res.ok) throw new Error();
+    } catch {
+      setError("No se pudo guardar");
+      loadPlan(planWeek);
+    }
+  }
+
+  // Long-press on a pool task → choose the day.
+  function poolPressStart(t: Task) {
+    longPressFired.current = false;
+    pressTimer.current = setTimeout(() => {
+      longPressFired.current = true;
+      openAssignSheet(t);
+      if (typeof navigator !== "undefined" && navigator.vibrate) navigator.vibrate(12);
+    }, 450);
   }
 
   async function removeTask(t: Task) {
@@ -1022,48 +1091,84 @@ export default function Home() {
                     })}
                   </div>
 
-                  <div className="section-head" style={{ marginTop: 26 }}>
-                    <h3 className="bucket-title" style={{ margin: 0 }}>
-                      {planData.bucket} · por repartir
-                    </h3>
-                    <span className="count">{planData.pool.length}</span>
-                  </div>
-                  {planData.pool.length === 0 ? (
-                    <div className="empty">¡Semana repartida! ✦</div>
-                  ) : (
-                    <div className="list">
-                      {planData.pool.map((t) => (
-                        <div
-                          key={t.id}
-                          className="item"
-                          onClick={() => openAssignSheet(t)}
-                        >
-                          <div className="item-body">
-                            <div className="item-title">{t.title}</div>
-                            <div className="item-meta">
-                              <span
-                                className="status-chip"
-                                style={{ color: statusColor(t.status) }}
-                              >
-                                <i className="dot" style={{ background: statusColor(t.status) }} />
-                                {statusES(t.status)}
-                              </span>
-                              {t.estMin ? (
-                                <>
-                                  <span className="meta-sep">·</span>
-                                  <span>{fmtMin(t.estMin)}</span>
-                                </>
-                              ) : null}
-                            </div>
-                          </div>
-                          <span className="assign-cta">Asignar →</span>
+                  {(() => {
+                    const prank: Record<string, number> = { High: 0, Medium: 1, Low: 2 };
+                    const sortedPool = [...planData.pool].sort(
+                      (a, b) =>
+                        (prank[a.priority ?? ""] ?? 3) - (prank[b.priority ?? ""] ?? 3) ||
+                        (a.estMin ?? 9999) - (b.estMin ?? 9999)
+                    );
+                    const poolMins = sortedPool.reduce((s, t) => s + (t.estMin ?? 0), 0);
+                    return (
+                      <>
+                        <div className="section-head" style={{ marginTop: 26 }}>
+                          <h3 className="bucket-title" style={{ margin: 0 }}>
+                            {planData.bucket} · por repartir
+                          </h3>
+                          <span className="count">
+                            {sortedPool.length}
+                            {poolMins ? ` · ≈ ${fmtMin(poolMins)}` : ""}
+                          </span>
                         </div>
-                      ))}
-                    </div>
-                  )}
-                  <p className="hint">
-                    Toca una tarea y elige el día. El balance de arriba se actualiza.
-                  </p>
+                        {sortedPool.length === 0 ? (
+                          <div className="empty">¡Semana repartida! ✦</div>
+                        ) : (
+                          <div className="list">
+                            {sortedPool.map((t) => {
+                              const worth =
+                                t.impact != null && t.effort != null
+                                  ? t.impact >= 4 && t.effort <= 2
+                                    ? "win"
+                                    : t.effort >= 4 && t.impact <= 2
+                                    ? "heavy"
+                                    : ""
+                                  : "";
+                              return (
+                                <div
+                                  key={t.id}
+                                  className="item"
+                                  onPointerDown={() => poolPressStart(t)}
+                                  onPointerUp={pressEnd}
+                                  onPointerLeave={pressEnd}
+                                  onPointerCancel={pressEnd}
+                                  onContextMenu={(e) => e.preventDefault()}
+                                  onClick={() => afterPress(() => openAnalyzeSheet(t))}
+                                >
+                                  <div className="item-body">
+                                    <div className="item-title">
+                                      {worth === "win" && "⭐ "}
+                                      {worth === "heavy" && "🪨 "}
+                                      {t.title}
+                                    </div>
+                                    <div className="item-meta">
+                                      {t.priority && (
+                                        <span className="prio-chip">{prioES(t.priority)}</span>
+                                      )}
+                                      {t.estMin ? (
+                                        <>
+                                          {t.priority && <span className="meta-sep">·</span>}
+                                          <span>{fmtMin(t.estMin)}</span>
+                                        </>
+                                      ) : (
+                                        <>
+                                          {t.priority && <span className="meta-sep">·</span>}
+                                          <span className="muted-mini">sin estimar</span>
+                                        </>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <Chevron />
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                        <p className="hint">
+                          Toca una tarea para puntuarla · mantén presionada para elegir el día.
+                        </p>
+                      </>
+                    );
+                  })()}
 
                   <h3 className="bucket-title" style={{ marginTop: 28 }}>
                     La semana
@@ -1320,6 +1425,119 @@ export default function Home() {
                     );
                   })}
                 </div>
+              </>
+            )}
+            {sheet === "analyze" && activeTask && (
+              <>
+                <h3 className="sheet-title serif">{activeTask.title}</h3>
+                {activeTask.impact != null && activeTask.effort != null && (
+                  <p className="sheet-sub">
+                    {activeTask.impact >= 4 && activeTask.effort <= 2
+                      ? "⭐ Vale la pena — mucho impacto, poco esfuerzo"
+                      : activeTask.effort >= 4 && activeTask.impact <= 2
+                      ? "🪨 Pesada — poco impacto, mucho esfuerzo"
+                      : "Puntuada"}
+                  </p>
+                )}
+
+                <div className="q">
+                  <div className="q-label">Prioridad</div>
+                  <div className="chips">
+                    {PRIORITY_OPTS.map((o) => (
+                      <button
+                        key={o.v}
+                        className={`chip ${activeTask.priority === o.v ? "chip-on" : ""}`}
+                        onClick={() =>
+                          setField(activeTask, {
+                            priority: activeTask.priority === o.v ? null : o.v,
+                          })
+                        }
+                      >
+                        {o.l}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="q">
+                  <div className="q-label">Importancia</div>
+                  <div className="chips">
+                    {IMPORTANCE_OPTS.map((o) => (
+                      <button
+                        key={o.v}
+                        className={`chip ${activeTask.importance === o.v ? "chip-on" : ""}`}
+                        onClick={() =>
+                          setField(activeTask, {
+                            importance: activeTask.importance === o.v ? null : o.v,
+                          })
+                        }
+                      >
+                        {o.l}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="q">
+                  <div className="q-label">Tiempo estimado</div>
+                  <div className="chips">
+                    {TIME_OPTS.map((o) => (
+                      <button
+                        key={o.v}
+                        className={`chip ${activeTask.estMin === o.v ? "chip-on" : ""}`}
+                        onClick={() =>
+                          setField(activeTask, {
+                            estMin: activeTask.estMin === o.v ? null : o.v,
+                          })
+                        }
+                      >
+                        {o.l}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="q">
+                  <div className="q-label">Impacto</div>
+                  <div className="chips">
+                    {SCALE.map((n) => (
+                      <button
+                        key={n}
+                        className={`chip chip-num ${activeTask.impact === n ? "chip-on" : ""}`}
+                        onClick={() =>
+                          setField(activeTask, { impact: activeTask.impact === n ? null : n })
+                        }
+                      >
+                        {n}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="q">
+                  <div className="q-label">Esfuerzo</div>
+                  <div className="chips">
+                    {SCALE.map((n) => (
+                      <button
+                        key={n}
+                        className={`chip chip-num ${activeTask.effort === n ? "chip-on" : ""}`}
+                        onClick={() =>
+                          setField(activeTask, { effort: activeTask.effort === n ? null : n })
+                        }
+                      >
+                        {n}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <button
+                  className="btn"
+                  style={{ width: "100%", marginTop: 8 }}
+                  onClick={() => openAssignSheet(activeTask)}
+                >
+                  Elegir día →
+                </button>
               </>
             )}
             {sheet === "soon" && (

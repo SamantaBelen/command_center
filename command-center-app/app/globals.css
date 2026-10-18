@@ -521,6 +521,55 @@ textarea,
   font-weight: 700;
 }
 
+/* ---------- analyze sheet (5 questions) ---------- */
+.q {
+  margin-top: 16px;
+}
+.q-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--burgundy);
+  margin: 0 2px 8px;
+  letter-spacing: 0.3px;
+}
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.chip {
+  font-family: inherit;
+  font-size: 14px;
+  padding: 9px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.chip:active {
+  background: var(--card-2);
+}
+.chip-num {
+  min-width: 42px;
+  text-align: center;
+}
+.chip-on {
+  background: var(--burgundy);
+  border-color: var(--burgundy);
+  color: #f6efe9;
+  font-weight: 600;
+}
+.prio-chip {
+  font-weight: 700;
+  color: var(--burgundy-soft);
+}
+.muted-mini {
+  color: var(--muted-2);
+  font-style: italic;
+}
+
 /* ---------- weekly agenda (Planear) ---------- */
 .agenda {
   display: flex;
