@@ -46,6 +46,18 @@ const BUCKETS = [
   { key: "Eventualmente", label: "Eventualmente" },
 ];
 
+const STATUS_META: Record<string, { es: string; color: string }> = {
+  "Not started": { es: "Sin empezar", color: "#9a8f84" },
+  "In progress": { es: "En progreso", color: "#4a6d8c" },
+  "Waiting": { es: "En espera", color: "#b98a3e" },
+  "Done": { es: "Hecha", color: "#6f8a4f" },
+  "Cancel": { es: "Cancelada", color: "#a1392c" },
+};
+// Options offered in the quick picker (in order).
+const STATUS_OPTIONS = ["Not started", "In progress", "Waiting", "Done"];
+const statusES = (s: string) => STATUS_META[s]?.es ?? s;
+const statusColor = (s: string) => STATUS_META[s]?.color ?? "#9a8f84";
+
 /* ---------- small icons ---------- */
 function CheckMark() {
   return (
@@ -244,7 +256,9 @@ export default function Home() {
   const [data, setData] = useState<Data | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState<Set<string>>(new Set());
-  const [sheet, setSheet] = useState<null | "habits" | "add" | "soon" | "task" | "plan">(null);
+  const [sheet, setSheet] = useState<
+    null | "habits" | "add" | "soon" | "task" | "plan" | "status"
+  >(null);
   const [soonLabel, setSoonLabel] = useState("");
   const [newTask, setNewTask] = useState("");
   const [adding, setAdding] = useState(false);
@@ -435,6 +449,41 @@ export default function Home() {
     }
   }
 
+  async function setStatus(t: Task, status: string) {
+    setSheet(null);
+    if (pending.has(t.id)) return;
+    markPending(t.id, true);
+    setData((d) =>
+      d ? { ...d, tasks: d.tasks.map((x) => (x.id === t.id ? { ...x, status } : x)) } : d
+    );
+    setWeekTasks((ws) =>
+      ws ? ws.map((x) => (x.id === t.id ? { ...x, status } : x)) : ws
+    );
+    try {
+      const res = await fetch("/api/task", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: t.id, status }),
+      });
+      if (!res.ok) throw new Error();
+    } catch {
+      setData((d) =>
+        d ? { ...d, tasks: d.tasks.map((x) => (x.id === t.id ? { ...x, status: t.status } : x)) } : d
+      );
+      setWeekTasks((ws) =>
+        ws ? ws.map((x) => (x.id === t.id ? { ...x, status: t.status } : x)) : ws
+      );
+      setError("No se pudo cambiar el estado");
+    } finally {
+      markPending(t.id, false);
+    }
+  }
+
+  function openStatusSheet(t: Task) {
+    setActiveTask(t);
+    setSheet("status");
+  }
+
   function openSoon(label: string) {
     setSoonLabel(label);
     setSheet("soon");
@@ -542,10 +591,30 @@ export default function Home() {
         <div className="item-body" onClick={() => afterPress(() => openTaskDetail(t))}>
           <div className="item-title">{t.title}</div>
           <div className="item-meta">
-            <TypeIcon type={t.type} />
-            {t.type && <span>{t.type}</span>}
-            {t.type && t.date && <span className="meta-sep">|</span>}
-            {t.date && <span>{taskWhen(t.date, data!.today)}</span>}
+            <span
+              className="status-chip"
+              style={{ color: statusColor(t.status) }}
+              onClick={(e) => {
+                e.stopPropagation();
+                afterPress(() => openStatusSheet(t));
+              }}
+            >
+              <i className="dot" style={{ background: statusColor(t.status) }} />
+              {statusES(t.status)}
+            </span>
+            {t.type && (
+              <>
+                <span className="meta-sep">·</span>
+                <TypeIcon type={t.type} />
+                <span>{t.type}</span>
+              </>
+            )}
+            {t.date && (
+              <>
+                <span className="meta-sep">·</span>
+                <span>{taskWhen(t.date, data!.today)}</span>
+              </>
+            )}
           </div>
         </div>
         <span onClick={() => afterPress(() => openTaskDetail(t))}>
@@ -876,6 +945,28 @@ export default function Home() {
                 </>
               );
             })()}
+            {sheet === "status" && activeTask && (
+              <>
+                <h3 className="sheet-title serif">{activeTask.title}</h3>
+                <p className="sheet-sub">Cambiar estado</p>
+                <div className="sheet-form">
+                  {STATUS_OPTIONS.map((s) => {
+                    const current = activeTask.status === s;
+                    return (
+                      <button
+                        key={s}
+                        className={`btn status-btn ${current ? "" : "btn-ghost"}`}
+                        onClick={() => setStatus(activeTask, s)}
+                      >
+                        <i className="dot" style={{ background: statusColor(s) }} />
+                        {statusES(s)}
+                        {current && <span className="status-current"> ✓</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            )}
             {sheet === "soon" && (
               <div className="soon">
                 <span className="big">🌱</span>
