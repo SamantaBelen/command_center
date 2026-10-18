@@ -81,7 +81,8 @@ function suggestPriority(t: {
   effort: number | null;
 }): string | null {
   const { importance: imp, impact, effort } = t;
-  if (imp == null && impact == null && effort == null) return null;
+  // Only suggest once the inputs it depends on are all filled.
+  if (imp == null || impact == null || effort == null) return null;
   // Alta
   if (imp === "Urgent" || imp === "Need") return "High";
   if (impact != null && effort != null && impact >= 4 && effort <= 2) return "High";
@@ -1458,43 +1459,6 @@ export default function Home() {
                   </p>
                 )}
 
-                {(() => {
-                  const sug = suggestPriority(activeTask);
-                  const showSug = sug && sug !== activeTask.priority;
-                  return (
-                    <div className="q">
-                      <div className="q-head">
-                        <div className="q-label">Prioridad</div>
-                        {showSug && (
-                          <button
-                            className="suggest-pill"
-                            onClick={() => setField(activeTask, { priority: sug })}
-                          >
-                            ✦ Sugerida: {prioES(sug!)}
-                          </button>
-                        )}
-                      </div>
-                      <div className="chips">
-                        {PRIORITY_OPTS.map((o) => (
-                          <button
-                            key={o.v}
-                            className={`chip ${activeTask.priority === o.v ? "chip-on" : ""} ${
-                              sug === o.v && activeTask.priority !== o.v ? "chip-suggested" : ""
-                            }`}
-                            onClick={() =>
-                              setField(activeTask, {
-                                priority: activeTask.priority === o.v ? null : o.v,
-                              })
-                            }
-                          >
-                            {o.l}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })()}
-
                 <div className="q">
                   <div className="q-label">Importancia</div>
                   <div className="chips">
@@ -1505,25 +1469,6 @@ export default function Home() {
                         onClick={() =>
                           setField(activeTask, {
                             importance: activeTask.importance === o.v ? null : o.v,
-                          })
-                        }
-                      >
-                        {o.l}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="q">
-                  <div className="q-label">Tiempo estimado</div>
-                  <div className="chips">
-                    {TIME_OPTS.map((o) => (
-                      <button
-                        key={o.v}
-                        className={`chip ${activeTask.estMin === o.v ? "chip-on" : ""}`}
-                        onClick={() =>
-                          setField(activeTask, {
-                            estMin: activeTask.estMin === o.v ? null : o.v,
                           })
                         }
                       >
@@ -1567,9 +1512,71 @@ export default function Home() {
                   </div>
                 </div>
 
+                <div className="q">
+                  <div className="q-label">Tiempo estimado</div>
+                  <div className="chips">
+                    {TIME_OPTS.map((o) => (
+                      <button
+                        key={o.v}
+                        className={`chip ${activeTask.estMin === o.v ? "chip-on" : ""}`}
+                        onClick={() =>
+                          setField(activeTask, {
+                            estMin: activeTask.estMin === o.v ? null : o.v,
+                          })
+                        }
+                      >
+                        {o.l}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {(() => {
+                  const sug = suggestPriority(activeTask);
+                  const showSug = sug && sug !== activeTask.priority;
+                  const ready = sug != null;
+                  return (
+                    <div className="q">
+                      <div className="q-head">
+                        <div className="q-label">Prioridad</div>
+                        {showSug && (
+                          <button
+                            className="suggest-pill"
+                            onClick={() => setField(activeTask, { priority: sug })}
+                          >
+                            ✦ Sugerida: {prioES(sug!)}
+                          </button>
+                        )}
+                      </div>
+                      {!ready && (
+                        <p className="q-note">
+                          Puntúa Importancia, Impacto y Esfuerzo y te sugiero una prioridad.
+                        </p>
+                      )}
+                      <div className="chips">
+                        {PRIORITY_OPTS.map((o) => (
+                          <button
+                            key={o.v}
+                            className={`chip ${activeTask.priority === o.v ? "chip-on" : ""} ${
+                              sug === o.v && activeTask.priority !== o.v ? "chip-suggested" : ""
+                            }`}
+                            onClick={() =>
+                              setField(activeTask, {
+                                priority: activeTask.priority === o.v ? null : o.v,
+                              })
+                            }
+                          >
+                            {o.l}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 <button
                   className="btn"
-                  style={{ width: "100%", marginTop: 8 }}
+                  style={{ width: "100%", marginTop: 16 }}
                   onClick={() => openAssignSheet(activeTask)}
                 >
                   Elegir día →
