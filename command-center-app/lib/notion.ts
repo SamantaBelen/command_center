@@ -22,6 +22,7 @@ export type Task = {
   priority: string | null;
   type: string | null;
   date: string | null; // may be "YYYY-MM-DD" or a full ISO timestamp
+  plan: string | null; // "Planeación" bucket: Agendado / Esta semana / Próxima semana / Eventualmente
 };
 
 export type Habit = {
@@ -71,6 +72,7 @@ export async function getTasks(dateISO: string, includeOverdue: boolean): Promis
       priority: props["Priority"]?.select?.name ?? null,
       type: firstMultiSelect(props["Task Type"]),
       date: props["Date"]?.date?.start ?? null,
+      plan: props["Planeación"]?.select?.name ?? null,
     };
   });
 
@@ -251,15 +253,58 @@ export async function setTaskStatus(id: string, status: string): Promise<void> {
   });
 }
 
-export async function createTask(title: string, dateISO?: string): Promise<Task> {
-  const date = dateISO ?? todayET();
+// Un-scheduled tasks (no Date), grouped later by their "Planeación" bucket.
+export async function getPlannedTasks(): Promise<Task[]> {
+  const res = await notion.databases.query({
+    database_id: TASKS_DB,
+    filter: {
+      and: [
+        { property: "Date", date: { is_empty: true } },
+        { property: "Status", status: { does_not_equal: "Done" } },
+        { property: "Status", status: { does_not_equal: "Cancel" } },
+      ],
+    },
+    page_size: 100,
+  });
+
+  return res.results.map((page: any) => {
+    const props = page.properties ?? {};
+    return {
+      id: page.id,
+      title: plainTitle(props["Tasks"]) || "(sin título)",
+      status: props["Status"]?.status?.name ?? "",
+      priority: props["Priority"]?.select?.name ?? null,
+      type: firstMultiSelect(props["Task Type"]),
+      date: props["Date"]?.date?.start ?? null,
+      plan: props["Planeación"]?.select?.name ?? null,
+    };
+  });
+}
+
+type CreateOpts = { date?: string | null; plan?: string | null };
+
+export async function createTask(title: string, opts: CreateOpts = {}): Promise<Task> {
+  const properties: any = {
+    Tasks: { title: [{ text: { content: title } }] },
+    Status: { status: { name: "Not started" } },
+  };
+  // Date: explicit date, or default to today unless we're creating into a bucket.
+  let date: string | null;
+  if (opts.date === null) {
+    date = null;
+  } else if (typeof opts.date === "string") {
+    date = opts.date;
+  } else if (opts.plan && opts.plan !== "Agendado") {
+    date = null; // bucketed task, no date
+  } else {
+    date = todayET();
+  }
+  if (date) properties.Date = { date: { start: date } };
+  if (opts.plan) properties["Planeación"] = { select: { name: opts.plan } };
+
   const page: any = await notion.pages.create({
     parent: { database_id: TASKS_DB },
-    properties: {
-      Tasks: { title: [{ text: { content: title } }] },
-      Status: { status: { name: "Not started" } },
-      Date: { date: { start: date } },
-    },
+    properties,
   });
   return {
     id: page.id,
@@ -268,7 +313,21 @@ export async function createTask(title: string, dateISO?: string): Promise<Task>
     priority: null,
     type: null,
     date,
+    plan: opts.plan ?? null,
   };
+}
+
+// Set the planning bucket. dateArg: null clears the Date, a string sets it,
+// undefined leaves the Date untouched.
+export async function setTaskPlan(
+  id: string,
+  plan: string,
+  dateArg: string | null | undefined
+): Promise<void> {
+  const properties: any = { "Planeación": { select: { name: plan } } };
+  if (dateArg === null) properties.Date = { date: null };
+  else if (typeof dateArg === "string") properties.Date = { date: { start: dateArg } };
+  await notion.pages.update({ page_id: id, properties });
 }
 
 export async function toggleCheckin(id: string, done: boolean): Promise<void> {
