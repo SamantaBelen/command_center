@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 const NAME = "Samanta";
 
@@ -11,6 +11,7 @@ type Task = {
   priority: string | null;
   type: string | null;
   date: string | null;
+  plan: string | null;
 };
 type Habit = {
   id: string;
@@ -35,8 +36,15 @@ const LABEL_ES: Record<string, string> = {
   Importance: "Importancia",
   "Task Type": "Tipo",
   "Estimated Time (min)": "Tiempo estimado (min)",
+  "Planeación": "Planeación",
 };
 const labelES = (l: string) => LABEL_ES[l] ?? l;
+
+const BUCKETS = [
+  { key: "Esta semana", label: "Esta semana" },
+  { key: "Próxima semana", label: "La próxima semana" },
+  { key: "Eventualmente", label: "Eventualmente" },
+];
 
 /* ---------- small icons ---------- */
 function CheckMark() {
@@ -99,7 +107,6 @@ function TypeIcon({ type }: { type: string | null }) {
   const t = (type ?? "").toLowerCase();
   let path: React.ReactNode;
   if (/red|social|instagram|tiktok|tik tok|marketing|content/.test(t)) {
-    // phone
     path = (
       <>
         <rect x="6" y="2.5" width="12" height="19" rx="2.5" />
@@ -107,7 +114,6 @@ function TypeIcon({ type }: { type: string | null }) {
       </>
     );
   } else if (/casa|home|hogar|limpieza|personal/.test(t)) {
-    // house
     path = (
       <>
         <path d="M4 11l8-6 8 6" />
@@ -115,12 +121,10 @@ function TypeIcon({ type }: { type: string | null }) {
       </>
     );
   } else if (/salud|health|gym|gimnasio|ejercicio/.test(t)) {
-    // heart
     path = (
       <path d="M12 20s-6-4-8-8c-1.3-2.9 0-5.5 2.8-5.5 1.6 0 2.7 1 3.2 1.8.5-.8 1.6-1.8 3.2-1.8C16 6.5 17.3 9.1 16 12c-2 4-4 8-4 8z" />
     );
   } else {
-    // laptop (work / default)
     path = (
       <>
         <rect x="4" y="5" width="16" height="11" rx="1.5" />
@@ -138,28 +142,27 @@ function TypeIcon({ type }: { type: string | null }) {
 
 /* ---------- date helpers (Eastern) ---------- */
 function partsET(d: Date) {
-  const fmt = new Intl.DateTimeFormat("en-CA", {
+  return new Intl.DateTimeFormat("en-CA", {
     timeZone: "America/New_York",
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
-  });
-  return fmt.format(d); // YYYY-MM-DD
+  }).format(d);
 }
 function weekDays(todayISO: string) {
   const [y, m, d] = todayISO.split("-").map(Number);
   const base = new Date(Date.UTC(y, m - 1, d));
-  const dow = base.getUTCDay(); // 0 Sun .. 6 Sat
+  const dow = base.getUTCDay();
   const toMonday = (dow + 6) % 7;
   const monday = new Date(base);
   monday.setUTCDate(base.getUTCDate() - toMonday);
   const labels = ["L", "M", "M", "J", "V", "S", "D"];
-  const out: { iso: string; num: number; dow: string; today: boolean }[] = [];
+  const out: { iso: string; num: number; dow: string }[] = [];
   for (let i = 0; i < 7; i++) {
     const cur = new Date(monday);
     cur.setUTCDate(monday.getUTCDate() + i);
     const iso = `${cur.getUTCFullYear()}-${String(cur.getUTCMonth() + 1).padStart(2, "0")}-${String(cur.getUTCDate()).padStart(2, "0")}`;
-    out.push({ iso, num: cur.getUTCDate(), dow: labels[i], today: iso === todayISO });
+    out.push({ iso, num: cur.getUTCDate(), dow: labels[i] });
   }
   return out;
 }
@@ -176,7 +179,6 @@ function dayLabelES(iso: string): string {
 function taskWhen(dateStr: string | null, todayISO: string): string {
   if (!dateStr) return "";
   const datePart = dateStr.slice(0, 10);
-  // yesterday iso
   const [y, m, d] = todayISO.split("-").map(Number);
   const yest = new Date(Date.UTC(y, m - 1, d));
   yest.setUTCDate(yest.getUTCDate() - 1);
@@ -196,7 +198,6 @@ function taskWhen(dateStr: string | null, todayISO: string): string {
     }).format(dt);
   }
 
-  // time, if the value carries one
   if (dateStr.length > 10 && dateStr.includes("T")) {
     const time = new Intl.DateTimeFormat("en-US", {
       hour: "numeric",
@@ -212,7 +213,7 @@ export default function Home() {
   const [data, setData] = useState<Data | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState<Set<string>>(new Set());
-  const [sheet, setSheet] = useState<null | "habits" | "add" | "soon" | "task">(null);
+  const [sheet, setSheet] = useState<null | "habits" | "add" | "soon" | "task" | "plan">(null);
   const [soonLabel, setSoonLabel] = useState("");
   const [newTask, setNewTask] = useState("");
   const [adding, setAdding] = useState(false);
@@ -220,6 +221,13 @@ export default function Home() {
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const [taskDetail, setTaskDetail] = useState<TaskDetailData | null>(null);
   const [taskLoading, setTaskLoading] = useState(false);
+
+  const [view, setView] = useState<"hoy" | "semana">("hoy");
+  const [weekTasks, setWeekTasks] = useState<Task[] | null>(null);
+  const [weekLoading, setWeekLoading] = useState(false);
+
+  const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressFired = useRef(false);
 
   const load = useCallback(async (dateISO?: string) => {
     setError(null);
@@ -246,6 +254,29 @@ export default function Home() {
     }
   }, []);
 
+  const loadWeek = useCallback(async () => {
+    setWeekLoading(true);
+    try {
+      const res = await fetch("/api/week", { cache: "no-store" });
+      if (res.status === 401) {
+        window.location.href = "/login";
+        return;
+      }
+      if (res.ok) setWeekTasks((await res.json()).tasks);
+      else {
+        let detail = "";
+        try {
+          detail = (await res.json())?.error ?? "";
+        } catch {}
+        setError(detail || "No se pudo cargar la semana");
+      }
+    } catch (e: any) {
+      setError(e?.message ?? "Error");
+    } finally {
+      setWeekLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     load();
   }, [load]);
@@ -266,18 +297,13 @@ export default function Home() {
   async function toggleTask(t: Task) {
     if (pending.has(t.id)) return;
     const willBeDone = t.status !== "Done";
+    const next = willBeDone ? "Done" : "Not started";
     markPending(t.id, true);
     setData((d) =>
-      d
-        ? {
-            ...d,
-            tasks: d.tasks.map((x) =>
-              x.id === t.id
-                ? { ...x, status: willBeDone ? "Done" : "Not started" }
-                : x
-            ),
-          }
-        : d
+      d ? { ...d, tasks: d.tasks.map((x) => (x.id === t.id ? { ...x, status: next } : x)) } : d
+    );
+    setWeekTasks((ws) =>
+      ws ? ws.map((x) => (x.id === t.id ? { ...x, status: next } : x)) : ws
     );
     try {
       const res = await fetch("/api/task", {
@@ -288,14 +314,10 @@ export default function Home() {
       if (!res.ok) throw new Error();
     } catch {
       setData((d) =>
-        d
-          ? {
-              ...d,
-              tasks: d.tasks.map((x) =>
-                x.id === t.id ? { ...x, status: t.status } : x
-              ),
-            }
-          : d
+        d ? { ...d, tasks: d.tasks.map((x) => (x.id === t.id ? { ...x, status: t.status } : x)) } : d
+      );
+      setWeekTasks((ws) =>
+        ws ? ws.map((x) => (x.id === t.id ? { ...x, status: t.status } : x)) : ws
       );
       setError("No se pudo guardar la tarea");
     } finally {
@@ -308,14 +330,7 @@ export default function Home() {
     markPending(h.id, true);
     const nextDone = !h.done;
     setData((d) =>
-      d
-        ? {
-            ...d,
-            habits: d.habits.map((x) =>
-              x.id === h.id ? { ...x, done: nextDone } : x
-            ),
-          }
-        : d
+      d ? { ...d, habits: d.habits.map((x) => (x.id === h.id ? { ...x, done: nextDone } : x)) } : d
     );
     try {
       const res = await fetch("/api/checkin", {
@@ -326,14 +341,7 @@ export default function Home() {
       if (!res.ok) throw new Error();
     } catch {
       setData((d) =>
-        d
-          ? {
-              ...d,
-              habits: d.habits.map((x) =>
-                x.id === h.id ? { ...x, done: h.done } : x
-              ),
-            }
-          : d
+        d ? { ...d, habits: d.habits.map((x) => (x.id === h.id ? { ...x, done: h.done } : x)) } : d
       );
       setError("No se pudo guardar el hábito");
     } finally {
@@ -347,16 +355,20 @@ export default function Home() {
     if (!title || adding || !data) return;
     setAdding(true);
     try {
+      const body =
+        view === "semana" ? { title, plan: "Esta semana" } : { title, date: data.date };
       const res = await fetch("/api/task", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, date: data.date }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) throw new Error();
-      const body = await res.json();
-      setData((d) =>
-        d ? { ...d, tasks: [...d.tasks, body.task] } : d
-      );
+      const payload = await res.json();
+      if (view === "semana") {
+        setWeekTasks((ws) => (ws ? [...ws, payload.task] : [payload.task]));
+      } else {
+        setData((d) => (d ? { ...d, tasks: [...d.tasks, payload.task] } : d));
+      }
       setNewTask("");
       setSheet(null);
     } catch {
@@ -366,9 +378,46 @@ export default function Home() {
     }
   }
 
+  // Move a task to a planning bucket (clears its date), or schedule it to today.
+  async function moveTask(t: Task, plan: string, scheduleToday = false) {
+    setSheet(null);
+    if (view === "hoy") {
+      setData((d) => (d ? { ...d, tasks: d.tasks.filter((x) => x.id !== t.id) } : d));
+    } else {
+      setWeekTasks((ws) => (ws ? ws.filter((x) => x.id !== t.id) : ws));
+    }
+    try {
+      const body = scheduleToday
+        ? { id: t.id, plan: "Agendado", date: data!.today }
+        : { id: t.id, plan, clearDate: true };
+      const res = await fetch("/api/task", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error();
+      if (view === "semana") loadWeek();
+    } catch {
+      setError("No se pudo mover la tarea");
+      if (view === "hoy") load(data!.date);
+      else loadWeek();
+    }
+  }
+
   function openSoon(label: string) {
     setSoonLabel(label);
     setSheet("soon");
+  }
+
+  function onNav(tab: string) {
+    if (tab === "hoy") {
+      setView("hoy");
+    } else if (tab === "semana") {
+      setView("semana");
+      loadWeek();
+    } else {
+      openSoon(tab === "proyectos" ? "Proyectos" : "Perfil");
+    }
   }
 
   async function openTaskDetail(t: Task) {
@@ -386,6 +435,65 @@ export default function Home() {
     }
   }
 
+  function pressStart(t: Task) {
+    longPressFired.current = false;
+    pressTimer.current = setTimeout(() => {
+      longPressFired.current = true;
+      setActiveTask(t);
+      setSheet("plan");
+      if (typeof navigator !== "undefined" && navigator.vibrate) navigator.vibrate(12);
+    }, 450);
+  }
+  function pressEnd() {
+    if (pressTimer.current) {
+      clearTimeout(pressTimer.current);
+      pressTimer.current = null;
+    }
+  }
+  function afterPress(fn: () => void) {
+    if (longPressFired.current) {
+      longPressFired.current = false;
+      return;
+    }
+    fn();
+  }
+
+  function renderTask(t: Task) {
+    const done = t.status === "Done";
+    return (
+      <div
+        key={t.id}
+        className={`item ${done ? "done" : ""}`}
+        onPointerDown={() => pressStart(t)}
+        onPointerUp={pressEnd}
+        onPointerLeave={pressEnd}
+        onPointerCancel={pressEnd}
+        onContextMenu={(e) => e.preventDefault()}
+      >
+        <span
+          onClick={(e) => {
+            e.stopPropagation();
+            afterPress(() => toggleTask(t));
+          }}
+        >
+          <CheckMark />
+        </span>
+        <div className="item-body" onClick={() => afterPress(() => openTaskDetail(t))}>
+          <div className="item-title">{t.title}</div>
+          <div className="item-meta">
+            <TypeIcon type={t.type} />
+            {t.type && <span>{t.type}</span>}
+            {t.type && t.date && <span className="meta-sep">|</span>}
+            {t.date && <span>{taskWhen(t.date, data!.today)}</span>}
+          </div>
+        </div>
+        <span onClick={() => afterPress(() => openTaskDetail(t))}>
+          <Chevron />
+        </span>
+      </div>
+    );
+  }
+
   /* ----- render states ----- */
   if (error && !data) {
     return (
@@ -397,7 +505,7 @@ export default function Home() {
             Reintentar
           </button>
         </div>
-        <BottomNav active="hoy" onTab={openSoon} />
+        <BottomNav active={view} onNav={onNav} />
       </>
     );
   }
@@ -406,7 +514,7 @@ export default function Home() {
       <>
         <Header onProfile={() => openSoon("Perfil")} />
         <div className="loading">Cargando…</div>
-        <BottomNav active="hoy" onTab={openSoon} />
+        <BottomNav active={view} onNav={onNav} />
       </>
     );
   }
@@ -418,105 +526,127 @@ export default function Home() {
   const isToday = data.date === data.today;
   const heroLabel = isToday ? "Tu té de hoy" : dayLabelES(data.date);
 
+  // planning view grouping
+  const planned = (weekTasks ?? []).filter((t) => t.status !== "Done");
+  const groups = BUCKETS.map((b) => ({
+    ...b,
+    items: planned.filter((t) => (t.plan ?? "") === b.key),
+  }));
+  const unclassified = planned.filter(
+    (t) => !BUCKETS.some((b) => b.key === (t.plan ?? ""))
+  );
+
   return (
     <>
       <Header onProfile={() => openSoon("Perfil")} />
 
-      {/* week strip */}
-      <div className="week">
-        {week.map((d, i) => {
-          const sel = data.date === d.iso;
-          const now = data.today === d.iso;
-          return (
-            <div
-              key={i}
-              className={`day ${sel ? "sel" : ""} ${now ? "now" : ""}`}
-              role="button"
-              tabIndex={0}
-              onClick={() => {
-                if (!sel) load(d.iso);
-              }}
-            >
-              <div className="dow">{d.dow}</div>
-              <div className="dnum">{d.num}</div>
-            </div>
-          );
-        })}
-      </div>
-
-      <div style={{ opacity: switching ? 0.45 : 1, transition: "opacity 0.2s ease" }}>
-
-      {/* tea hero -> habits */}
-      <div
-        className="hero"
-        role="button"
-        tabIndex={0}
-        onClick={() => setSheet("habits")}
-      >
-        <div className="hero-text">
-          <p className="hero-label serif">{heroLabel}</p>
-          <p className="hero-count serif">
-            {habitsTotal ? `${habitsDone} de ${habitsTotal} gotas` : "Sin hábitos"}
-          </p>
-          <div className="hero-bar">
-            <span style={{ width: `${pct}%` }} />
-          </div>
-          <p className="hero-sub">
-            {habitsTotal
-              ? "Cada hábito te acerca a tu meta."
-              : "Aún no hay hábitos para hoy."}
-          </p>
-        </div>
-      </div>
-
-      {/* tasks */}
-      <section className="section">
-        <div className="section-head">
-          <h2 className="section-title serif">Tareas</h2>
-          <span className="count">{pendingTasks} pendientes</span>
-        </div>
-        {data.tasks.length === 0 ? (
-          <div className="empty">Nada pendiente. Respira. ✦</div>
-        ) : (
-          <div className="list">
-            {data.tasks.map((t) => {
-              const done = t.status === "Done";
+      {view === "hoy" && (
+        <>
+          {/* week strip */}
+          <div className="week">
+            {week.map((d, i) => {
+              const sel = data.date === d.iso;
+              const now = data.today === d.iso;
               return (
-                <div key={t.id} className={`item ${done ? "done" : ""}`}>
-                  <span
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      toggleTask(t);
-                    }}
-                  >
-                    <CheckMark />
-                  </span>
-                  <div className="item-body" onClick={() => openTaskDetail(t)}>
-                    <div className="item-title">{t.title}</div>
-                    <div className="item-meta">
-                      <TypeIcon type={t.type} />
-                      {t.type && <span>{t.type}</span>}
-                      {t.type && t.date && <span className="meta-sep">|</span>}
-                      {t.date && <span>{taskWhen(t.date, data.today)}</span>}
-                    </div>
-                  </div>
-                  <span onClick={() => openTaskDetail(t)}>
-                    <Chevron />
-                  </span>
+                <div
+                  key={i}
+                  className={`day ${sel ? "sel" : ""} ${now ? "now" : ""}`}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => {
+                    if (!sel) load(d.iso);
+                  }}
+                >
+                  <div className="dow">{d.dow}</div>
+                  <div className="dnum">{d.num}</div>
                 </div>
               );
             })}
           </div>
-        )}
-      </section>
 
-      <div className="center" style={{ marginTop: 22 }}>
-        <button className="refresh" onClick={() => load(data.date)}>
-          Actualizar
-        </button>
-      </div>
+          <div style={{ opacity: switching ? 0.45 : 1, transition: "opacity 0.2s ease" }}>
+            {/* tea hero -> habits */}
+            <div className="hero" role="button" tabIndex={0} onClick={() => setSheet("habits")}>
+              <div className="hero-text">
+                <p className="hero-label serif">{heroLabel}</p>
+                <p className="hero-count serif">
+                  {habitsTotal ? `${habitsDone} de ${habitsTotal} gotas` : "Sin hábitos"}
+                </p>
+                <div className="hero-bar">
+                  <span style={{ width: `${pct}%` }} />
+                </div>
+                <p className="hero-sub">
+                  {habitsTotal
+                    ? "Cada hábito te acerca a tu meta."
+                    : "Aún no hay hábitos para hoy."}
+                </p>
+              </div>
+            </div>
 
-      </div>
+            {/* tasks */}
+            <section className="section">
+              <div className="section-head">
+                <h2 className="section-title serif">Tareas</h2>
+                <span className="count">{pendingTasks} pendientes</span>
+              </div>
+              {data.tasks.length === 0 ? (
+                <div className="empty">Nada pendiente. Respira. ✦</div>
+              ) : (
+                <div className="list">{data.tasks.map((t) => renderTask(t))}</div>
+              )}
+              <p className="hint">Mantén presionada una tarea para moverla de semana.</p>
+            </section>
+
+            <div className="center" style={{ marginTop: 20 }}>
+              <button className="refresh" onClick={() => load(data.date)}>
+                Actualizar
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {view === "semana" && (
+        <>
+          <section className="section" style={{ marginTop: 22 }}>
+            <div className="section-head">
+              <h2 className="section-title serif">Para agendar</h2>
+              <span className="count">{planned.length} tareas</span>
+            </div>
+            {weekLoading && !weekTasks ? (
+              <div className="loading">Cargando…</div>
+            ) : planned.length === 0 ? (
+              <div className="empty">
+                No hay tareas sin agendar. ✦
+                <br />
+                Mantén presionada una tarea del día para traerla aquí.
+              </div>
+            ) : (
+              <>
+                {groups.map((g) => (
+                  <div key={g.key} className="bucket">
+                    <h3 className="bucket-title">{g.label}</h3>
+                    {g.items.length === 0 ? (
+                      <div className="bucket-empty">—</div>
+                    ) : (
+                      <div className="list">{g.items.map((t) => renderTask(t))}</div>
+                    )}
+                  </div>
+                ))}
+                {unclassified.length > 0 && (
+                  <div className="bucket">
+                    <h3 className="bucket-title">Sin clasificar</h3>
+                    <div className="list">{unclassified.map((t) => renderTask(t))}</div>
+                  </div>
+                )}
+              </>
+            )}
+            <p className="hint">
+              Mantén presionada una tarea para cambiarla de semana o agendarla.
+            </p>
+          </section>
+        </>
+      )}
 
       {/* add task */}
       <button className="fab" aria-label="Añadir tarea" onClick={() => setSheet("add")}>
@@ -525,7 +655,7 @@ export default function Home() {
         </svg>
       </button>
 
-      <BottomNav active="hoy" onTab={openSoon} />
+      <BottomNav active={view} onNav={onNav} />
 
       {/* sheets */}
       {sheet && (
@@ -569,7 +699,9 @@ export default function Home() {
               <>
                 <h3 className="sheet-title serif">Nueva tarea</h3>
                 <p className="sheet-sub">
-                  Se agrega a {isToday ? "hoy" : dayLabelES(data.date)} en tu Notion.
+                  {view === "semana"
+                    ? "Se agrega a 'Esta semana' (sin fecha)."
+                    : `Se agrega a ${isToday ? "hoy" : dayLabelES(data.date)} en tu Notion.`}
                 </p>
                 <form className="sheet-form" onSubmit={addTask}>
                   <input
@@ -584,8 +716,36 @@ export default function Home() {
                 </form>
               </>
             )}
+            {sheet === "plan" && activeTask && (
+              <>
+                <h3 className="sheet-title serif">Mover tarea</h3>
+                <p className="sheet-sub">{activeTask.title}</p>
+                <div className="sheet-form">
+                  {BUCKETS.map((b) => (
+                    <button
+                      key={b.key}
+                      className={`btn ${activeTask.plan === b.key ? "" : "btn-ghost"}`}
+                      onClick={() => moveTask(activeTask, b.key)}
+                    >
+                      {b.label}
+                    </button>
+                  ))}
+                  {!activeTask.date && (
+                    <button
+                      className="btn btn-ghost"
+                      onClick={() => moveTask(activeTask, "Agendado", true)}
+                    >
+                      Agendar para hoy
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
             {sheet === "task" && activeTask && (() => {
-              const live = data.tasks.find((x) => x.id === activeTask.id) ?? activeTask;
+              const live =
+                data.tasks.find((x) => x.id === activeTask.id) ??
+                (weekTasks ?? []).find((x) => x.id === activeTask.id) ??
+                activeTask;
               const done = live.status === "Done";
               return (
                 <>
@@ -662,15 +822,18 @@ function Header({ onProfile }: { onProfile: () => void }) {
 /* ---------- bottom nav ---------- */
 function BottomNav({
   active,
-  onTab,
+  onNav,
 }: {
   active: string;
-  onTab: (label: string) => void;
+  onNav: (tab: string) => void;
 }) {
   return (
     <nav className="nav">
       <div className="nav-inner">
-        <button className={`tab ${active === "hoy" ? "active" : ""}`}>
+        <button
+          className={`tab ${active === "hoy" ? "active" : ""}`}
+          onClick={() => onNav("hoy")}
+        >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"
             strokeLinecap="round" strokeLinejoin="round">
             <path d="M4 11l8-6 8 6" />
@@ -678,22 +841,25 @@ function BottomNav({
           </svg>
           Hoy
         </button>
-        <button className="tab" onClick={() => onTab("Calendario")}>
+        <button
+          className={`tab ${active === "semana" ? "active" : ""}`}
+          onClick={() => onNav("semana")}
+        >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"
             strokeLinecap="round" strokeLinejoin="round">
             <rect x="4" y="5" width="16" height="16" rx="2" />
             <path d="M4 9h16M8 3v4M16 3v4" />
           </svg>
-          Calendario
+          Semana
         </button>
-        <button className="tab" onClick={() => onTab("Proyectos")}>
+        <button className="tab" onClick={() => onNav("proyectos")}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"
             strokeLinecap="round" strokeLinejoin="round">
             <path d="M20 5C11 5 7 9.5 7 15c0 .8.1 1.6.3 2.3M20 5c0 7.5-4.5 10.8-10.5 11.3M20 5c-2 .3-5.8 1.3-8.3 4.2" />
           </svg>
           Proyectos
         </button>
-        <button className="tab" onClick={() => onTab("Perfil")}>
+        <button className="tab" onClick={() => onNav("perfil")}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"
             strokeLinecap="round" strokeLinejoin="round">
             <circle cx="12" cy="8" r="3.5" />
