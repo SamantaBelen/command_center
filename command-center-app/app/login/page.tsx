@@ -33,7 +33,7 @@ export default function Login() {
     <div className="login">
       <div>
         <p className="kicker">Command Center</p>
-        <h1 className="title serif">Hoy</h1>
+        <h1 className="hello serif">Hoy</h1>
       </div>
       <form onSubmit={submit}>
         <input

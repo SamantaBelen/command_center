@@ -7,14 +7,12 @@ const CHECKINS_DB = process.env.NOTION_CHECKINS_DB ?? "25c3317dc9c7430a885c0aa6b
 
 // "Hoy" in America/New_York (Eastern), regardless of the server's UTC clock.
 export function todayET(): string {
-  const parts = new Intl.DateTimeFormat("en-CA", {
+  return new Intl.DateTimeFormat("en-CA", {
     timeZone: "America/New_York",
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
   }).format(new Date());
-  // en-CA already gives YYYY-MM-DD
-  return parts;
 }
 
 export type Task = {
@@ -22,7 +20,8 @@ export type Task = {
   title: string;
   status: string;
   priority: string | null;
-  date: string | null;
+  type: string | null;
+  date: string | null; // may be "YYYY-MM-DD" or a full ISO timestamp
 };
 
 export type Habit = {
@@ -36,6 +35,12 @@ export type Habit = {
 function plainTitle(prop: any): string {
   const arr = prop?.title ?? prop?.rich_text ?? [];
   return arr.map((t: any) => t?.plain_text ?? "").join("").trim();
+}
+
+function firstMultiSelect(prop: any): string | null {
+  const arr = prop?.multi_select;
+  if (Array.isArray(arr) && arr.length) return arr[0]?.name ?? null;
+  return null;
 }
 
 // Tasks due today or overdue, not Done / Cancel.
@@ -53,16 +58,26 @@ export async function getTodayTasks(): Promise<Task[]> {
     page_size: 100,
   });
 
-  return res.results.map((page: any) => {
+  const tasks = res.results.map((page: any) => {
     const props = page.properties ?? {};
     return {
       id: page.id,
       title: plainTitle(props["Tasks"]) || "(sin título)",
       status: props["Status"]?.status?.name ?? "",
       priority: props["Priority"]?.select?.name ?? null,
+      type: firstMultiSelect(props["Task Type"]),
       date: props["Date"]?.date?.start ?? null,
     };
   });
+
+  // Earliest first; undated last.
+  tasks.sort((a, b) => {
+    const ad = a.date ?? "9999";
+    const bd = b.date ?? "9999";
+    return ad < bd ? -1 : ad > bd ? 1 : 0;
+  });
+
+  return tasks;
 }
 
 // Check-ins whose current period contains today: Period start <= today <= Period end.
@@ -100,11 +115,31 @@ export async function getTodayHabits(): Promise<Habit[]> {
   return habits;
 }
 
-export async function markTaskDone(id: string): Promise<void> {
+export async function setTaskStatus(id: string, status: string): Promise<void> {
   await notion.pages.update({
     page_id: id,
-    properties: { Status: { status: { name: "Done" } } },
+    properties: { Status: { status: { name: status } } },
   });
+}
+
+export async function createTask(title: string): Promise<Task> {
+  const today = todayET();
+  const page: any = await notion.pages.create({
+    parent: { database_id: TASKS_DB },
+    properties: {
+      Tasks: { title: [{ text: { content: title } }] },
+      Status: { status: { name: "Not started" } },
+      Date: { date: { start: today } },
+    },
+  });
+  return {
+    id: page.id,
+    title,
+    status: "Not started",
+    priority: null,
+    type: null,
+    date: today,
+  };
 }
 
 export async function toggleCheckin(id: string, done: boolean): Promise<void> {
