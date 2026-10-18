@@ -19,7 +19,7 @@ type Habit = {
   cadence: string | null;
   order: number | null;
 };
-type Data = { today: string; tasks: Task[]; habits: Habit[] };
+type Data = { today: string; date: string; tasks: Task[]; habits: Habit[] };
 
 /* ---------- small icons ---------- */
 function CheckMark() {
@@ -146,6 +146,16 @@ function weekDays(todayISO: string) {
   }
   return out;
 }
+function dayLabelES(iso: string): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  const s = new Intl.DateTimeFormat("es-ES", {
+    weekday: "long",
+    day: "numeric",
+    timeZone: "UTC",
+  }).format(dt);
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
 function taskWhen(dateStr: string | null, todayISO: string): string {
   if (!dateStr) return "";
   const datePart = dateStr.slice(0, 10);
@@ -189,11 +199,14 @@ export default function Home() {
   const [soonLabel, setSoonLabel] = useState("");
   const [newTask, setNewTask] = useState("");
   const [adding, setAdding] = useState(false);
+  const [switching, setSwitching] = useState(false);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (dateISO?: string) => {
     setError(null);
+    if (dateISO) setSwitching(true);
     try {
-      const res = await fetch("/api/today", { cache: "no-store" });
+      const url = dateISO ? `/api/today?date=${dateISO}` : "/api/today";
+      const res = await fetch(url, { cache: "no-store" });
       if (res.status === 401) {
         window.location.href = "/login";
         return;
@@ -208,6 +221,8 @@ export default function Home() {
       setData(await res.json());
     } catch (e: any) {
       setError(e?.message ?? "Error");
+    } finally {
+      setSwitching(false);
     }
   }, []);
 
@@ -309,13 +324,13 @@ export default function Home() {
   async function addTask(e: React.FormEvent) {
     e.preventDefault();
     const title = newTask.trim();
-    if (!title || adding) return;
+    if (!title || adding || !data) return;
     setAdding(true);
     try {
       const res = await fetch("/api/task", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title }),
+        body: JSON.stringify({ title, date: data.date }),
       });
       if (!res.ok) throw new Error();
       const body = await res.json();
@@ -343,7 +358,7 @@ export default function Home() {
         <Header onProfile={() => openSoon("Perfil")} />
         <div className="empty">{error}</div>
         <div className="center">
-          <button className="refresh" onClick={load}>
+          <button className="refresh" onClick={() => load()}>
             Reintentar
           </button>
         </div>
@@ -365,6 +380,8 @@ export default function Home() {
   const habitsDone = data.habits.filter((h) => h.done).length;
   const habitsTotal = data.habits.length;
   const pct = habitsTotal ? Math.round((habitsDone / habitsTotal) * 100) : 0;
+  const isToday = data.date === data.today;
+  const heroLabel = isToday ? "Tu té de hoy" : dayLabelES(data.date);
 
   return (
     <>
@@ -372,13 +389,27 @@ export default function Home() {
 
       {/* week strip */}
       <div className="week">
-        {week.map((d, i) => (
-          <div key={i} className={`day ${d.today ? "today" : ""}`}>
-            <div className="dow">{d.dow}</div>
-            <div className="dnum">{d.num}</div>
-          </div>
-        ))}
+        {week.map((d, i) => {
+          const sel = data.date === d.iso;
+          const now = data.today === d.iso;
+          return (
+            <div
+              key={i}
+              className={`day ${sel ? "sel" : ""} ${now ? "now" : ""}`}
+              role="button"
+              tabIndex={0}
+              onClick={() => {
+                if (!sel) load(d.iso);
+              }}
+            >
+              <div className="dow">{d.dow}</div>
+              <div className="dnum">{d.num}</div>
+            </div>
+          );
+        })}
       </div>
+
+      <div style={{ opacity: switching ? 0.45 : 1, transition: "opacity 0.2s ease" }}>
 
       {/* tea hero -> habits */}
       <div
@@ -388,7 +419,7 @@ export default function Home() {
         onClick={() => setSheet("habits")}
       >
         <div className="hero-text">
-          <p className="hero-label serif">Tu té de hoy</p>
+          <p className="hero-label serif">{heroLabel}</p>
           <p className="hero-count serif">
             {habitsTotal ? `${habitsDone} de ${habitsTotal} gotas` : "Sin hábitos"}
           </p>
@@ -438,9 +469,11 @@ export default function Home() {
       </section>
 
       <div className="center" style={{ marginTop: 22 }}>
-        <button className="refresh" onClick={load}>
+        <button className="refresh" onClick={() => load(data.date)}>
           Actualizar
         </button>
+      </div>
+
       </div>
 
       {/* add task */}
@@ -459,7 +492,9 @@ export default function Home() {
             <div className="grabber" />
             {sheet === "habits" && (
               <>
-                <h3 className="sheet-title serif">Hábitos de hoy</h3>
+                <h3 className="sheet-title serif">
+                  {isToday ? "Hábitos de hoy" : `Hábitos · ${dayLabelES(data.date)}`}
+                </h3>
                 <p className="sheet-sub">
                   {habitsDone} de {habitsTotal} ✦ cada gota cuenta
                 </p>
@@ -491,7 +526,9 @@ export default function Home() {
             {sheet === "add" && (
               <>
                 <h3 className="sheet-title serif">Nueva tarea</h3>
-                <p className="sheet-sub">Se agrega a hoy en tu Notion.</p>
+                <p className="sheet-sub">
+                  Se agrega a {isToday ? "hoy" : dayLabelES(data.date)} en tu Notion.
+                </p>
                 <form className="sheet-form" onSubmit={addTask}>
                   <input
                     autoFocus
