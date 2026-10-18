@@ -279,6 +279,24 @@ export default function Home() {
     if (sheet) sheetOpenedAt.current = Date.now();
   }, [sheet]);
 
+  // Lift sheets above the on-screen keyboard (iOS).
+  const [kbInset, setKbInset] = useState(0);
+  useEffect(() => {
+    const vv = typeof window !== "undefined" ? window.visualViewport : null;
+    if (!vv) return;
+    const onResize = () => {
+      const kb = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+      setKbInset(kb > 80 ? kb : 0); // ignore tiny toolbar changes
+    };
+    vv.addEventListener("resize", onResize);
+    vv.addEventListener("scroll", onResize);
+    onResize();
+    return () => {
+      vv.removeEventListener("resize", onResize);
+      vv.removeEventListener("scroll", onResize);
+    };
+  }, []);
+
   function closeSheet() {
     // Ignore the ghost tap that can "pass through" to the backdrop right
     // after opening (iOS), which otherwise closes the sheet instantly.
@@ -802,7 +820,11 @@ export default function Home() {
 
       {/* sheets */}
       {sheet && (
-        <div className="sheet-backdrop" onClick={closeSheet}>
+        <div
+          className="sheet-backdrop"
+          onClick={closeSheet}
+          style={kbInset ? { paddingBottom: kbInset } : undefined}
+        >
           <div className="sheet" onClick={(e) => e.stopPropagation()}>
             <div className="grabber" />
             {sheet === "habits" && (
