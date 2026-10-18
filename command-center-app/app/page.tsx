@@ -58,6 +58,15 @@ const STATUS_OPTIONS = ["Not started", "In progress", "Waiting", "Done"];
 const statusES = (s: string) => STATUS_META[s]?.es ?? s;
 const statusColor = (s: string) => STATUS_META[s]?.color ?? "#9a8f84";
 
+const CADENCE_ES: Record<string, string> = {
+  daily: "Diario",
+  weekly: "Semanal",
+  monthly: "Mensual",
+  yearly: "Anual",
+};
+const cadenceES = (c: string | null) =>
+  c ? CADENCE_ES[c.toLowerCase()] ?? c : "";
+
 /* ---------- small icons ---------- */
 function CheckMark() {
   return (
@@ -655,6 +664,26 @@ export default function Home() {
     );
   }
 
+  function renderHabit(h: Habit) {
+    return (
+      <div
+        key={h.id}
+        className={`item ${h.done ? "done" : ""}`}
+        onClick={() => toggleHabit(h)}
+      >
+        <CheckMark />
+        <div className="item-body">
+          <div className="item-title">{h.title}</div>
+          {h.cadence && (
+            <div className="item-meta">
+              <span>{cadenceES(h.cadence)}</span>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   /* ----- render states ----- */
   if (error && !data) {
     return (
@@ -681,8 +710,12 @@ export default function Home() {
   }
 
   const pendingTasks = data.tasks.filter((t) => t.status !== "Done").length;
-  const habitsDone = data.habits.filter((h) => h.done).length;
-  const habitsTotal = data.habits.length;
+  const isDaily = (h: Habit) => (h.cadence ?? "").toLowerCase() === "daily";
+  const dailyHabits = data.habits.filter(isDaily);
+  const otherHabits = data.habits.filter((h) => !isDaily(h));
+  // Tea drops count only daily habits.
+  const habitsDone = dailyHabits.filter((h) => h.done).length;
+  const habitsTotal = dailyHabits.length;
   const pct = habitsTotal ? Math.round((habitsDone / habitsTotal) * 100) : 0;
   const isToday = data.date === data.today;
   const heroLabel = isToday ? "Tu té de hoy" : dayLabelES(data.date);
@@ -835,28 +868,22 @@ export default function Home() {
                 <p className="sheet-sub">
                   {habitsDone} de {habitsTotal} ✦ cada gota cuenta
                 </p>
-                {habitsTotal === 0 ? (
+                {dailyHabits.length === 0 && otherHabits.length === 0 ? (
                   <div className="empty">No hay hábitos para hoy.</div>
                 ) : (
-                  <div className="list">
-                    {data.habits.map((h) => (
-                      <div
-                        key={h.id}
-                        className={`item ${h.done ? "done" : ""}`}
-                        onClick={() => toggleHabit(h)}
-                      >
-                        <CheckMark />
-                        <div className="item-body">
-                          <div className="item-title">{h.title}</div>
-                          {h.cadence && (
-                            <div className="item-meta">
-                              <span>{h.cadence}</span>
-                            </div>
-                          )}
+                  <>
+                    {dailyHabits.length > 0 && (
+                      <div className="list">{dailyHabits.map(renderHabit)}</div>
+                    )}
+                    {otherHabits.length > 0 && (
+                      <>
+                        <div className="sheet-divider">
+                          <span>Puedes hacerlos hoy · opcional</span>
                         </div>
-                      </div>
-                    ))}
-                  </div>
+                        <div className="list">{otherHabits.map(renderHabit)}</div>
+                      </>
+                    )}
+                  </>
                 )}
               </>
             )}

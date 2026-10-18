@@ -672,6 +672,24 @@ textarea,
   overflow-wrap: anywhere;
 }
 
+.sheet-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 22px 2px 14px;
+  color: var(--muted-2);
+  font-size: 12px;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+}
+.sheet-divider::before,
+.sheet-divider::after {
+  content: "";
+  height: 1px;
+  background: var(--line);
+  flex: 1;
+}
+
 .sheet .soon {
   text-align: center;
   padding: 26px 10px 10px;
