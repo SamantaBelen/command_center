@@ -63,41 +63,6 @@ function Heart() {
     </svg>
   );
 }
-function TeaCup() {
-  return (
-    <svg viewBox="0 0 120 110" fill="none" aria-hidden>
-      {/* drop */}
-      <path
-        d="M60 6c3 6 7 10 7 15a7 7 0 11-14 0c0-5 4-9 7-15z"
-        fill="#b5724f"
-        opacity="0.8"
-      />
-      {/* cup */}
-      <path
-        d="M22 52h66v10c0 18-15 30-33 30S22 80 22 62V52z"
-        fill="#faf5ee"
-        stroke="#c9b299"
-        strokeWidth="2"
-      />
-      {/* tea */}
-      <path
-        d="M28 56h54v6c0 15-12 25-27 25S28 77 28 62v-6z"
-        fill="#c98a53"
-        opacity="0.55"
-      />
-      {/* handle */}
-      <path
-        d="M88 56c12 0 12 20 0 22"
-        fill="none"
-        stroke="#c9b299"
-        strokeWidth="3"
-        strokeLinecap="round"
-      />
-      {/* saucer */}
-      <ellipse cx="55" cy="98" rx="42" ry="7" fill="#d8c3ad" opacity="0.6" />
-    </svg>
-  );
-}
 function Chevron() {
   return (
     <span className="chev" aria-hidden>
@@ -435,9 +400,6 @@ export default function Home() {
               ? "Cada hábito te acerca a tu meta."
               : "Aún no hay hábitos para hoy."}
           </p>
-        </div>
-        <div className="hero-art">
-          <TeaCup />
         </div>
       </div>
 
