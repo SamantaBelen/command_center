@@ -580,6 +580,39 @@ textarea,
 .btn-ghost:active {
   background: var(--card-2);
 }
+.btn-danger {
+  background: #a1392c;
+  color: #f6efe9;
+}
+.btn-danger:active {
+  background: #8c3025;
+}
+.btn-text-danger {
+  display: block;
+  width: 100%;
+  margin-top: 16px;
+  padding: 12px;
+  background: none;
+  border: none;
+  color: #a1392c;
+  font-family: inherit;
+  font-size: 14.5px;
+  cursor: pointer;
+}
+.confirm {
+  margin-top: 16px;
+}
+.confirm-q {
+  margin: 0 0 12px;
+  text-align: center;
+  color: var(--ink);
+  font-size: 14.5px;
+}
+.confirm-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
 .muted {
   color: var(--muted);
   font-size: 14px;

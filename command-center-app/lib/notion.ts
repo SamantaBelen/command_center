@@ -330,6 +330,11 @@ export async function setTaskPlan(
   await notion.pages.update({ page_id: id, properties });
 }
 
+// Moves the task to Notion's trash (recoverable ~30 days), not a hard delete.
+export async function deleteTask(id: string): Promise<void> {
+  await notion.pages.update({ page_id: id, archived: true });
+}
+
 export async function toggleCheckin(id: string, done: boolean): Promise<void> {
   await notion.pages.update({
     page_id: id,

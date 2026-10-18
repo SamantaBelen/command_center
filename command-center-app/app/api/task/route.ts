@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { setTaskStatus, createTask, getTaskDetail, setTaskPlan } from "@/lib/notion";
+import { setTaskStatus, createTask, getTaskDetail, setTaskPlan, deleteTask } from "@/lib/notion";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -13,6 +13,22 @@ export async function GET(req: Request) {
     }
     const detail = await getTaskDetail(id);
     return NextResponse.json(detail);
+  } catch (e: any) {
+    return NextResponse.json(
+      { error: e?.message ?? "Notion error" },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(req: Request) {
+  try {
+    const id = new URL(req.url).searchParams.get("id");
+    if (!id) {
+      return NextResponse.json({ error: "id requerido" }, { status: 400 });
+    }
+    await deleteTask(id);
+    return NextResponse.json({ ok: true });
   } catch (e: any) {
     return NextResponse.json(
       { error: e?.message ?? "Notion error" },

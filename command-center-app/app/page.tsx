@@ -251,6 +251,7 @@ export default function Home() {
   const [switching, setSwitching] = useState(false);
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const [taskDetail, setTaskDetail] = useState<TaskDetailData | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const [view, setView] = useState<"hoy" | "semana">("hoy");
   const [weekTasks, setWeekTasks] = useState<Task[] | null>(null);
@@ -450,8 +451,24 @@ export default function Home() {
     }
   }
 
+  async function removeTask(t: Task) {
+    setSheet(null);
+    setConfirmDelete(false);
+    setData((d) => (d ? { ...d, tasks: d.tasks.filter((x) => x.id !== t.id) } : d));
+    setWeekTasks((ws) => (ws ? ws.filter((x) => x.id !== t.id) : ws));
+    try {
+      const res = await fetch(`/api/task?id=${t.id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error();
+    } catch {
+      setError("No se pudo borrar la tarea");
+      if (view === "hoy") load(data!.date);
+      else loadWeek();
+    }
+  }
+
   async function openTaskDetail(t: Task) {
     setActiveTask(t);
+    setConfirmDelete(false);
     let opened = false;
     const reveal = (detail: TaskDetailData) => {
       if (opened) return;
@@ -703,7 +720,13 @@ export default function Home() {
 
       {/* sheets */}
       {sheet && (
-        <div className="sheet-backdrop" onClick={() => setSheet(null)}>
+        <div
+          className="sheet-backdrop"
+          onClick={() => {
+            setSheet(null);
+            setConfirmDelete(false);
+          }}
+        >
           <div className="sheet" onClick={(e) => e.stopPropagation()}>
             <div className="grabber" />
             {sheet === "habits" && (
@@ -826,6 +849,29 @@ export default function Home() {
                     >
                       Abrir en Notion ↗
                     </a>
+                  )}
+                  {!confirmDelete ? (
+                    <button
+                      className="btn-text-danger"
+                      onClick={() => setConfirmDelete(true)}
+                    >
+                      Borrar tarea
+                    </button>
+                  ) : (
+                    <div className="confirm">
+                      <p className="confirm-q">¿Borrar esta tarea? Se mueve a la papelera de Notion.</p>
+                      <div className="confirm-row">
+                        <button
+                          className="btn btn-ghost"
+                          onClick={() => setConfirmDelete(false)}
+                        >
+                          Cancelar
+                        </button>
+                        <button className="btn btn-danger" onClick={() => removeTask(live)}>
+                          Sí, borrar
+                        </button>
+                      </div>
+                    </div>
                   )}
                 </>
               );
