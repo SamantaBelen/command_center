@@ -166,6 +166,37 @@ function weekDays(todayISO: string) {
   }
   return out;
 }
+function longDateES(dateStr: string): string {
+  const hasTime = dateStr.length > 10 && dateStr.includes("T");
+  if (hasTime) {
+    return new Intl.DateTimeFormat("es-ES", {
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      timeZone: "America/New_York",
+    }).format(new Date(dateStr));
+  }
+  const [y, m, d] = dateStr.slice(0, 10).split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  return new Intl.DateTimeFormat("es-ES", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(dt);
+}
+// Build detail rows from what we already know, so the sheet opens full immediately.
+function basicDetail(t: Task): TaskDetailData {
+  const fields: { label: string; value: string }[] = [];
+  if (t.status) fields.push({ label: "Status", value: t.status });
+  if (t.priority) fields.push({ label: "Priority", value: t.priority });
+  if (t.date) fields.push({ label: "Date", value: longDateES(t.date) });
+  if (t.type) fields.push({ label: "Task Type", value: t.type });
+  if (t.plan) fields.push({ label: "Planeación", value: t.plan });
+  return { id: t.id, url: null, title: t.title, lastEdited: null, fields };
+}
 function dayLabelES(iso: string): string {
   const [y, m, d] = iso.split("-").map(Number);
   const dt = new Date(Date.UTC(y, m - 1, d));
@@ -220,7 +251,6 @@ export default function Home() {
   const [switching, setSwitching] = useState(false);
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const [taskDetail, setTaskDetail] = useState<TaskDetailData | null>(null);
-  const [taskLoading, setTaskLoading] = useState(false);
 
   const [view, setView] = useState<"hoy" | "semana">("hoy");
   const [weekTasks, setWeekTasks] = useState<Task[] | null>(null);
@@ -422,16 +452,21 @@ export default function Home() {
 
   async function openTaskDetail(t: Task) {
     setActiveTask(t);
-    setTaskDetail(null);
+    setTaskDetail(basicDetail(t)); // open full immediately, no empty→tall jump
     setSheet("task");
-    setTaskLoading(true);
+    const started = Date.now();
     try {
       const res = await fetch(`/api/task?id=${t.id}`, { cache: "no-store" });
-      if (res.ok) setTaskDetail(await res.json());
+      if (res.ok) {
+        const full = await res.json();
+        // apply after the slide-up settles so it fills in, not mid-animation
+        const wait = Math.max(0, 340 - (Date.now() - started));
+        setTimeout(() => {
+          setTaskDetail((cur) => (cur && cur.id === full.id ? full : cur));
+        }, wait);
+      }
     } catch {
       // the sheet still shows the basics
-    } finally {
-      setTaskLoading(false);
     }
   }
 
@@ -757,7 +792,6 @@ export default function Home() {
                   >
                     {done ? "Marcar como no hecha" : "Marcar como hecha ✓"}
                   </button>
-                  {taskLoading && <div className="muted center">Cargando detalle…</div>}
                   {taskDetail && taskDetail.fields.length > 0 && (
                     <div className="detail">
                       {taskDetail.fields.map((f) => (
