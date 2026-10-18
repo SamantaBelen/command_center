@@ -273,6 +273,19 @@ export default function Home() {
 
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressFired = useRef(false);
+  const sheetOpenedAt = useRef(0);
+
+  useEffect(() => {
+    if (sheet) sheetOpenedAt.current = Date.now();
+  }, [sheet]);
+
+  function closeSheet() {
+    // Ignore the ghost tap that can "pass through" to the backdrop right
+    // after opening (iOS), which otherwise closes the sheet instantly.
+    if (Date.now() - sheetOpenedAt.current < 400) return;
+    setSheet(null);
+    setConfirmDelete(false);
+  }
 
   const load = useCallback(async (dateISO?: string) => {
     setError(null);
@@ -789,13 +802,7 @@ export default function Home() {
 
       {/* sheets */}
       {sheet && (
-        <div
-          className="sheet-backdrop"
-          onClick={() => {
-            setSheet(null);
-            setConfirmDelete(false);
-          }}
-        >
+        <div className="sheet-backdrop" onClick={closeSheet}>
           <div className="sheet" onClick={(e) => e.stopPropagation()}>
             <div className="grabber" />
             {sheet === "habits" && (
