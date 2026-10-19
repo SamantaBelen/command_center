@@ -700,6 +700,7 @@ export default function Home() {
 
   function openAnalyzeSheet(t: Task) {
     setActiveTask(t);
+    setConfirmDelete(false);
     setSheet("analyze");
   }
 
@@ -744,12 +745,22 @@ export default function Home() {
     setConfirmDelete(false);
     setData((d) => (d ? { ...d, tasks: d.tasks.filter((x) => x.id !== t.id) } : d));
     setWeekTasks((ws) => (ws ? ws.filter((x) => x.id !== t.id) : ws));
+    setPlanData((p) =>
+      p
+        ? {
+            ...p,
+            pool: p.pool.filter((x) => x.id !== t.id),
+            week: p.week.filter((x) => x.id !== t.id),
+          }
+        : p
+    );
     try {
       const res = await fetch(`/api/task?id=${t.id}`, { method: "DELETE" });
       if (!res.ok) throw new Error();
     } catch {
       setError("No se pudo borrar la tarea");
       if (view === "hoy") load(data!.date);
+      else if (view === "planear") loadPlan(planWeek);
       else loadWeek();
     }
   }
@@ -1581,6 +1592,32 @@ export default function Home() {
                 >
                   Elegir día →
                 </button>
+
+                {!confirmDelete ? (
+                  <button
+                    className="btn-text-danger"
+                    onClick={() => setConfirmDelete(true)}
+                  >
+                    Borrar tarea
+                  </button>
+                ) : (
+                  <div className="confirm">
+                    <p className="confirm-q">
+                      ¿Borrar esta tarea? Se mueve a la papelera de Notion.
+                    </p>
+                    <div className="confirm-row">
+                      <button
+                        className="btn btn-ghost"
+                        onClick={() => setConfirmDelete(false)}
+                      >
+                        Cancelar
+                      </button>
+                      <button className="btn btn-danger" onClick={() => removeTask(activeTask)}>
+                        Sí, borrar
+                      </button>
+                    </div>
+                  </div>
+                )}
               </>
             )}
             {sheet === "soon" && (
