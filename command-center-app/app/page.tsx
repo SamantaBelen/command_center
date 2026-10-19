@@ -563,8 +563,13 @@ export default function Home() {
     if (!title || adding || !data) return;
     setAdding(true);
     try {
+      const planBucket = planWeek === "next" ? "Próxima semana" : "Esta semana";
       const body =
-        view === "semana" ? { title, plan: "Esta semana" } : { title, date: data.date };
+        view === "planear"
+          ? { title, plan: planBucket }
+          : view === "semana"
+          ? { title, plan: "Esta semana" }
+          : { title, date: data.date };
       const res = await fetch("/api/task", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -572,7 +577,9 @@ export default function Home() {
       });
       if (!res.ok) throw new Error();
       const payload = await res.json();
-      if (view === "semana") {
+      if (view === "planear") {
+        setPlanData((p) => (p ? { ...p, pool: [...p.pool, payload.task] } : p));
+      } else if (view === "semana") {
         setWeekTasks((ws) => (ws ? [...ws, payload.task] : [payload.task]));
       } else {
         setData((d) => (d ? { ...d, tasks: [...d.tasks, payload.task] } : d));
@@ -1301,7 +1308,9 @@ export default function Home() {
               <>
                 <h3 className="sheet-title serif">Nueva tarea</h3>
                 <p className="sheet-sub">
-                  {view === "semana"
+                  {view === "planear"
+                    ? `Se agrega a '${planWeek === "next" ? "Próxima semana" : "Esta semana"}' por repartir.`
+                    : view === "semana"
                     ? "Se agrega a 'Esta semana' (sin fecha)."
                     : `Se agrega a ${isToday ? "hoy" : dayLabelES(data.date)} en tu Notion.`}
                 </p>
