@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { getPlannedTasks, getWeekTasks, weekBounds, todayET } from "@/lib/notion";
+import { getPlannedTasks, getWeekTasks, todayET } from "@/lib/notion";
+import { weekBounds } from "@/lib/planning";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

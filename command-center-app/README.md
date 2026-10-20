@@ -63,24 +63,40 @@ npm run dev                  # http://localhost:3000
 
 ## Estructura
 
+Layout estándar de Next.js con todo el código fuente en `src/` y las pruebas en
+`tests/`.
+
 ```
-app/
-  layout.tsx          fuentes (serif + sans), meta PWA
-  globals.css         paleta japandi/burgundy
-  page.tsx            pantalla "Hoy" (cliente)
-  login/page.tsx      candado de contraseña
-  api/
-    auth/route.ts     verifica contraseña, setea cookie
-    today/route.ts    tareas + hábitos de hoy
-    task/route.ts     marcar tarea Done
-    checkin/route.ts  alternar hábito Done
-lib/
-  notion.ts           cliente Notion + consultas + "hoy" en Eastern
-  auth.ts             token de cookie (Web Crypto)
-middleware.ts         protege todo menos /login y /api/auth
+src/
+  app/
+    layout.tsx          fuentes (serif + sans), meta PWA
+    globals.css         paleta japandi/burgundy
+    page.tsx            pantallas Hoy · Pendientes · Planear (cliente)
+    login/page.tsx      candado de contraseña
+    api/
+      auth/route.ts     verifica contraseña, setea cookie
+      today/route.ts    tareas + hábitos de un día
+      week/route.ts     tareas sin agendar (Pendientes)
+      plan/route.ts     tablero semanal + montón por repartir
+      task/route.ts     crear / estado / planeación / puntuar / borrar tarea
+      checkin/route.ts  alternar hábito Done
+  lib/
+    notion.ts           cliente Notion + consultas (server-only)
+    planning.ts         lógica pura: prioridad sugerida + cálculo de semana
+    auth.ts             token de cookie (Web Crypto)
+  middleware.ts         protege todo menos /login y /api/auth
+tests/
+  unit/
+    planning.test.ts    pruebas de suggestPriority y weekBounds
 public/
-  manifest.json       PWA
-  icons/              iconos generados
+  manifest.json         PWA
+  icons/                iconos generados
+```
+
+## Pruebas
+
+```bash
+npm test     # pruebas unitarias (node:test + tsx) de la lógica en src/lib
 ```
 
 ## Próximas versiones (ideas)
