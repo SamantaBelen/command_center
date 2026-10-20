@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { suggestPriority } from "@/lib/planning";
 
 const NAME = "Samanta";
 
@@ -74,24 +75,6 @@ const statusColor = (s: string) => STATUS_META[s]?.color ?? "#9a8f84";
 const prioES = (p: string) =>
   ({ High: "Alta", Medium: "Media", Low: "Baja" } as Record<string, string>)[p] ?? p;
 
-// Suggested priority from Importancia + Impacto vs Esfuerzo (the agreed table).
-function suggestPriority(t: {
-  importance: string | null;
-  impact: number | null;
-  effort: number | null;
-}): string | null {
-  const { importance: imp, impact, effort } = t;
-  // Only suggest once the inputs it depends on are all filled.
-  if (imp == null || impact == null || effort == null) return null;
-  // Alta
-  if (imp === "Urgent" || imp === "Need") return "High";
-  if (impact != null && effort != null && impact >= 4 && effort <= 2) return "High";
-  // Baja
-  if (imp === "Want") return "Low";
-  if (impact != null && impact <= 2) return "Low";
-  if (impact != null && effort != null && effort >= 4 && impact <= 3) return "Low";
-  return "Medium";
-}
 
 const PRIORITY_OPTS = [
   { v: "High", l: "Alta" },

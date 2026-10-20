@@ -65,24 +65,6 @@ function mapTaskPage(page: any): Task {
   };
 }
 
-// Mon–Sun ISO bounds for the week containing the given day.
-export function weekBounds(todayISO: string): { start: string; end: string; days: string[] } {
-  const [y, m, d] = todayISO.split("-").map(Number);
-  const base = new Date(Date.UTC(y, m - 1, d));
-  const toMonday = (base.getUTCDay() + 6) % 7;
-  const monday = new Date(base);
-  monday.setUTCDate(base.getUTCDate() - toMonday);
-  const iso = (dt: Date) =>
-    `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, "0")}-${String(dt.getUTCDate()).padStart(2, "0")}`;
-  const days: string[] = [];
-  for (let i = 0; i < 7; i++) {
-    const c = new Date(monday);
-    c.setUTCDate(monday.getUTCDate() + i);
-    days.push(iso(c));
-  }
-  return { start: days[0], end: days[6], days };
-}
-
 // Dated, not-done tasks whose Date falls within [startISO, endISO].
 export async function getWeekTasks(startISO: string, endISO: string): Promise<Task[]> {
   const res = await notion.databases.query({
