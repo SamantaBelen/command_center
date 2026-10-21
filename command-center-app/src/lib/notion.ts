@@ -82,32 +82,48 @@ export async function getWeekTasks(startISO: string, endISO: string): Promise<Ta
   return res.results.map(mapTaskPage);
 }
 
-// Tasks for a given day, not Done / Cancel.
-// For today we include overdue tasks (Date on-or-before today); for any other
-// day we show only the tasks dated exactly that day.
+// Tasks for a given day (not Cancel). Tasks dated that day are shown even when
+// Done, so completed tasks stay visible (marked done). For today we also bubble
+// up overdue tasks that are still pending (Date before today, not Done).
 export async function getTasks(dateISO: string, includeOverdue: boolean): Promise<Task[]> {
-  const dateFilter = includeOverdue
-    ? { property: "Date", date: { on_or_before: dateISO } }
-    : { property: "Date", date: { equals: dateISO } };
+  // Tasks scheduled on this exact day (any status except Cancel → includes Done).
+  const sameDay = {
+    and: [
+      { property: "Date", date: { equals: dateISO } },
+      { property: "Status", status: { does_not_equal: "Cancel" } },
+    ],
+  };
+  const filter = includeOverdue
+    ? {
+        or: [
+          sameDay,
+          {
+            and: [
+              { property: "Date", date: { before: dateISO } },
+              { property: "Status", status: { does_not_equal: "Done" } },
+              { property: "Status", status: { does_not_equal: "Cancel" } },
+            ],
+          },
+        ],
+      }
+    : sameDay;
+
   const res = await notion.databases.query({
     database_id: TASKS_DB,
-    filter: {
-      and: [
-        dateFilter,
-        { property: "Status", status: { does_not_equal: "Done" } },
-        { property: "Status", status: { does_not_equal: "Cancel" } },
-      ],
-    },
+    filter,
     page_size: 100,
   });
 
   const tasks = res.results.map(mapTaskPage);
 
-  // Earliest first; undated last.
+  // Pending first, completed last; within each, earliest date first.
   tasks.sort((a, b) => {
-    const ad = a.date ?? "9999";
-    const bd = b.date ?? "9999";
-    return ad < bd ? -1 : ad > bd ? 1 : 0;
+    const ad = a.status === "Done" ? 1 : 0;
+    const bd = b.status === "Done" ? 1 : 0;
+    if (ad !== bd) return ad - bd;
+    const ax = a.date ?? "9999";
+    const bx = b.date ?? "9999";
+    return ax < bx ? -1 : ax > bx ? 1 : 0;
   });
 
   return tasks;
