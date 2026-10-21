@@ -65,7 +65,9 @@ function mapTaskPage(page: any): Task {
   };
 }
 
-// Dated, not-done tasks whose Date falls within [startISO, endISO].
+// Dated tasks whose Date falls within [startISO, endISO] (not Cancel).
+// Includes Done tasks so the agenda can show them (marked done); the balance
+// still counts only pending ones.
 export async function getWeekTasks(startISO: string, endISO: string): Promise<Task[]> {
   const res = await notion.databases.query({
     database_id: TASKS_DB,
@@ -73,7 +75,6 @@ export async function getWeekTasks(startISO: string, endISO: string): Promise<Ta
       and: [
         { property: "Date", date: { on_or_after: startISO } },
         { property: "Date", date: { on_or_before: endISO } },
-        { property: "Status", status: { does_not_equal: "Done" } },
         { property: "Status", status: { does_not_equal: "Cancel" } },
       ],
     },

@@ -681,6 +681,15 @@ textarea,
   color: var(--ink);
   overflow-wrap: anywhere;
 }
+.agenda-item.done {
+  background: var(--gold-tint);
+  border-color: var(--gold-soft);
+}
+.agenda-item.done .agenda-title {
+  color: var(--gold-ink);
+  text-decoration: line-through;
+  text-decoration-color: var(--gold-soft);
+}
 .agenda-time {
   flex: 0 0 auto;
   font-size: 12px;

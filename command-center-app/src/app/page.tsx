@@ -1078,7 +1078,7 @@ export default function Home() {
             (() => {
               const stats = planData.weekDays.map((iso) => {
                 const dayTasks = planData.week.filter(
-                  (t) => (t.date ?? "").slice(0, 10) === iso
+                  (t) => (t.date ?? "").slice(0, 10) === iso && t.status !== "Done"
                 );
                 const mins = dayTasks.reduce((s, t) => s + (t.estMin ?? 0), 0);
                 return { iso, count: dayTasks.length, mins };
@@ -1199,7 +1199,12 @@ export default function Home() {
                     {planData.weekDays.map((iso) => {
                       const dayTasks = planData.week
                         .filter((t) => (t.date ?? "").slice(0, 10) === iso)
-                        .sort((a, b) => (a.date ?? "").localeCompare(b.date ?? ""));
+                        .sort((a, b) => {
+                          const ad = a.status === "Done" ? 1 : 0;
+                          const bd = b.status === "Done" ? 1 : 0;
+                          if (ad !== bd) return ad - bd;
+                          return (a.date ?? "").localeCompare(b.date ?? "");
+                        });
                       const isToday = iso === planData.today;
                       return (
                         <div key={iso} className={`agenda-day ${isToday ? "agenda-now" : ""}`}>
@@ -1220,7 +1225,7 @@ export default function Home() {
                             dayTasks.map((t) => (
                               <div
                                 key={t.id}
-                                className="agenda-item"
+                                className={`agenda-item ${t.status === "Done" ? "done" : ""}`}
                                 onClick={() => openTaskDetail(t)}
                               >
                                 <i className="dot" style={{ background: statusColor(t.status) }} />
@@ -1432,7 +1437,7 @@ export default function Home() {
                 <div className="assign-days">
                   {planData.weekDays.map((iso) => {
                     const n = planData.week.filter(
-                      (t) => (t.date ?? "").slice(0, 10) === iso
+                      (t) => (t.date ?? "").slice(0, 10) === iso && t.status !== "Done"
                     ).length;
                     return (
                       <button
