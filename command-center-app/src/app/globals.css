@@ -482,11 +482,21 @@ textarea,
   overflow: hidden;
   margin: 2px 0;
 }
-.bal-bar > i {
+.bal-fill {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  border-radius: 999px;
+  overflow: hidden;
+  transition: height 0.3s ease;
+}
+.bal-pend {
   width: 100%;
   background: var(--burgundy);
-  border-radius: 999px;
-  transition: height 0.3s ease;
+}
+.bal-done {
+  width: 100%;
+  background: var(--gold);
 }
 .bal-count {
   font-size: 10px;

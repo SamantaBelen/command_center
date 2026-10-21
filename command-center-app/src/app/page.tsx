@@ -1078,19 +1078,31 @@ export default function Home() {
             (() => {
               const stats = planData.weekDays.map((iso) => {
                 const dayTasks = planData.week.filter(
-                  (t) => (t.date ?? "").slice(0, 10) === iso && t.status !== "Done"
+                  (t) => (t.date ?? "").slice(0, 10) === iso
                 );
-                const mins = dayTasks.reduce((s, t) => s + (t.estMin ?? 0), 0);
-                return { iso, count: dayTasks.length, mins };
+                const done = dayTasks.filter((t) => t.status === "Done");
+                const pend = dayTasks.filter((t) => t.status !== "Done");
+                return {
+                  iso,
+                  pendMins: pend.reduce((s, t) => s + (t.estMin ?? 0), 0),
+                  doneMins: done.reduce((s, t) => s + (t.estMin ?? 0), 0),
+                  pendCount: pend.length,
+                  doneCount: done.length,
+                };
               });
-              const useMins = stats.some((s) => s.mins > 0);
-              const max = Math.max(1, ...stats.map((s) => (useMins ? s.mins : s.count)));
+              const useMins = stats.some((s) => s.pendMins > 0 || s.doneMins > 0);
+              const val = (s: (typeof stats)[number]) =>
+                useMins
+                  ? { pend: s.pendMins, done: s.doneMins }
+                  : { pend: s.pendCount, done: s.doneCount };
+              const max = Math.max(1, ...stats.map((s) => val(s).pend + val(s).done));
               return (
                 <>
                   <div className="balance">
                     {stats.map((s) => {
-                      const metric = useMins ? s.mins : s.count;
-                      const h = metric ? Math.max(12, Math.round((metric / max) * 100)) : 0;
+                      const m = val(s);
+                      const total = m.pend + m.done;
+                      const h = total ? Math.max(12, Math.round((total / max) * 100)) : 0;
                       return (
                         <button
                           key={s.iso}
@@ -1103,10 +1115,23 @@ export default function Home() {
                           <span className="bal-dow">{dowLetter(s.iso)}</span>
                           <span className="bal-num">{Number(s.iso.slice(8, 10))}</span>
                           <span className="bal-bar">
-                            <i style={{ height: `${h}%` }} />
+                            <span className="bal-fill" style={{ height: `${h}%` }}>
+                              {m.pend > 0 && (
+                                <i className="bal-pend" style={{ flexGrow: m.pend }} />
+                              )}
+                              {m.done > 0 && (
+                                <i className="bal-done" style={{ flexGrow: m.done }} />
+                              )}
+                            </span>
                           </span>
                           <span className="bal-count">
-                            {useMins ? (s.mins ? fmtMin(s.mins) : "—") : s.count || "—"}
+                            {useMins
+                              ? s.pendMins
+                                ? fmtMin(s.pendMins)
+                                : s.doneMins
+                                ? "✓"
+                                : "—"
+                              : s.pendCount || (s.doneCount ? "✓" : "—")}
                           </span>
                         </button>
                       );
