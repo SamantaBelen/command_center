@@ -65,7 +65,7 @@ const STATUS_META: Record<string, { es: string; color: string }> = {
   "Not started": { es: "Sin empezar", color: "#9a8f84" },
   "In progress": { es: "En progreso", color: "#4a6d8c" },
   "Waiting": { es: "En espera", color: "#b98a3e" },
-  "Done": { es: "Hecha", color: "#6f8a4f" },
+  "Done": { es: "Hecha", color: "#b4894e" },
   "Cancel": { es: "Cancelada", color: "#a1392c" },
 };
 // Options offered in the quick picker (in order).
