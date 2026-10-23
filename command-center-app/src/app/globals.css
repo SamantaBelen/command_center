@@ -618,6 +618,36 @@ textarea,
 }
 
 /* ---------- day planner (Día) ---------- */
+.daypart {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 20px 0 10px;
+  padding: 10px 15px;
+  background: linear-gradient(90deg, var(--card) 0%, var(--card-2) 100%);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--burgundy-soft);
+  border-radius: 12px;
+}
+.daypart-name {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 13.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--burgundy);
+}
+.daypart-ico {
+  font-size: 13px;
+  color: var(--gold);
+  opacity: 0.9;
+}
+.daypart-time {
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
 .daytl {
   display: flex;
   flex-direction: column;
