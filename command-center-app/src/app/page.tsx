@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { suggestPriority } from "@/lib/planning";
+import { suggestPriority, buildETDateTime } from "@/lib/planning";
 
 const NAME = "Samanta";
 
@@ -298,6 +298,30 @@ function clockES(dateStr: string): string {
     timeZone: "America/New_York",
   }).format(new Date(dateStr));
 }
+function hasTime(dateStr: string | null): boolean {
+  return !!dateStr && dateStr.length > 10 && dateStr.includes("T");
+}
+// "HH:MM" (24h, zero-padded) in Eastern — for <input type="time">.
+function timeHHMM_ET(dateStr: string): string {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: "America/New_York",
+  }).formatToParts(new Date(dateStr));
+  const h = parts.find((p) => p.type === "hour")?.value ?? "00";
+  const m = parts.find((p) => p.type === "minute")?.value ?? "00";
+  return `${h}:${m}`;
+}
+// Clock label for (start + minutes), in Eastern.
+function clockPlusES(dateStr: string, addMin: number): string {
+  const d = new Date(new Date(dateStr).getTime() + addMin * 60000);
+  return new Intl.DateTimeFormat("es-ES", {
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: "America/New_York",
+  }).format(d);
+}
 function fmtMin(total: number): string {
   if (!total) return "";
   const h = Math.floor(total / 60);
@@ -344,7 +368,16 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState<Set<string>>(new Set());
   const [sheet, setSheet] = useState<
-    null | "habits" | "add" | "soon" | "task" | "plan" | "status" | "assign" | "analyze"
+    | null
+    | "habits"
+    | "add"
+    | "soon"
+    | "task"
+    | "plan"
+    | "status"
+    | "assign"
+    | "analyze"
+    | "time"
   >(null);
   const [soonLabel, setSoonLabel] = useState("");
   const [newTask, setNewTask] = useState("");
@@ -354,7 +387,7 @@ export default function Home() {
   const [taskDetail, setTaskDetail] = useState<TaskDetailData | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  const [view, setView] = useState<"hoy" | "semana" | "planear">("hoy");
+  const [view, setView] = useState<"hoy" | "semana" | "planear" | "dia">("hoy");
   const [weekTasks, setWeekTasks] = useState<Task[] | null>(null);
   const [weekLoading, setWeekLoading] = useState(false);
   const [planData, setPlanData] = useState<PlanData | null>(null);
@@ -645,17 +678,21 @@ export default function Home() {
   function onNav(tab: string) {
     if (tab === "hoy") {
       setView("hoy");
+    } else if (tab === "dia") {
+      // Plan today's day.
+      if (data && data.date !== data.today) load(data.today);
+      setView("dia");
     } else if (tab === "semana") {
-      setView("semana");
-      loadWeek();
-    } else if (tab === "planear") {
-      // On Sundays, default to planning next week.
+      // Weekly planning board. On Sundays, default to next week.
       const w: "this" | "next" = data && isSundayISO(data.today) ? "next" : "this";
       setView("planear");
       setPlanWeek(w);
       loadPlan(w);
+    } else if (tab === "pendientes") {
+      setView("semana");
+      loadWeek();
     } else {
-      openSoon(tab === "proyectos" ? "Proyectos" : "Perfil");
+      openSoon("Perfil");
     }
   }
 
@@ -696,12 +733,38 @@ export default function Home() {
     setSheet("analyze");
   }
 
+  function openTimeSheet(t: Task) {
+    setActiveTask(t);
+    setSheet("time");
+  }
+
+  // Set or clear a task's start time for the current day.
+  async function saveTime(t: Task, hhmm: string | null) {
+    if (!data) return;
+    const newDate = hhmm ? buildETDateTime(data.date, hhmm) : data.date;
+    const apply = (x: Task) => (x.id === t.id ? { ...x, date: newDate } : x);
+    setData((d) => (d ? { ...d, tasks: d.tasks.map(apply) } : d));
+    setActiveTask((cur) => (cur && cur.id === t.id ? { ...cur, date: newDate } : cur));
+    try {
+      const res = await fetch("/api/task", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: t.id, day: data.date, startTime: hhmm }),
+      });
+      if (!res.ok) throw new Error();
+    } catch {
+      setError("No se pudo guardar la hora");
+      load(data.date);
+    }
+  }
+
   // Save one or more scoring fields (Priority, Importance, estMin, Impact, Effort).
   async function setField(t: Task, patch: Partial<Task>) {
     const apply = (x: Task) => (x.id === t.id ? { ...x, ...patch } : x);
     setPlanData((p) =>
       p ? { ...p, pool: p.pool.map(apply), week: p.week.map(apply) } : p
     );
+    setData((d) => (d ? { ...d, tasks: d.tasks.map(apply) } : d));
     setActiveTask((cur) => (cur && cur.id === t.id ? { ...cur, ...patch } : cur));
     try {
       const fields: any = {};
@@ -897,7 +960,7 @@ export default function Home() {
             Reintentar
           </button>
         </div>
-        <BottomNav active={view} onNav={onNav} />
+        <BottomNav view={view} onNav={onNav} />
       </>
     );
   }
@@ -906,7 +969,7 @@ export default function Home() {
       <>
         <Header onProfile={() => openSoon("Perfil")} />
         <div className="loading">Cargando…</div>
-        <BottomNav active={view} onNav={onNav} />
+        <BottomNav view={view} onNav={onNav} />
       </>
     );
   }
@@ -1272,6 +1335,97 @@ export default function Home() {
         </section>
       )}
 
+      {view === "dia" && (() => {
+        const timed = data.tasks
+          .filter((t) => hasTime(t.date))
+          .sort((a, b) => (a.date ?? "").localeCompare(b.date ?? ""));
+        const untimed = data.tasks.filter((t) => !hasTime(t.date));
+        return (
+          <section className="section" style={{ marginTop: 22 }}>
+            <div className="section-head">
+              <h2 className="section-title serif">Planea tu día</h2>
+              <span className="count">
+                {data.date === data.today ? "Hoy" : dayLabelES(data.date)}
+              </span>
+            </div>
+
+            {data.tasks.length === 0 ? (
+              <div className="empty">Nada para hoy. Respira. ✦</div>
+            ) : (
+              <>
+                {timed.length > 0 && (
+                  <div className="daytl">
+                    {timed.map((t) => {
+                      const start = clockES(t.date ?? "");
+                      const end = t.estMin ? clockPlusES(t.date ?? "", t.estMin) : "";
+                      return (
+                        <div
+                          key={t.id}
+                          className={`dayblock ${t.status === "Done" ? "done" : ""}`}
+                          onClick={() => openTimeSheet(t)}
+                        >
+                          <div className="dayblock-time">
+                            {start}
+                            {end && <span className="dayblock-end">{end}</span>}
+                          </div>
+                          <div className="dayblock-body">
+                            <i className="dot" style={{ background: statusColor(t.status) }} />
+                            <span className="dayblock-title">{t.title}</span>
+                            {t.estMin ? (
+                              <span className="agenda-time">{fmtMin(t.estMin)}</span>
+                            ) : null}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {untimed.length > 0 && (
+                  <>
+                    {timed.length > 0 && (
+                      <div className="sheet-divider">
+                        <span>Sin hora</span>
+                      </div>
+                    )}
+                    <div className="list">
+                      {untimed.map((t) => (
+                        <div
+                          key={t.id}
+                          className={`item ${t.status === "Done" ? "done" : ""}`}
+                          onClick={() => openTimeSheet(t)}
+                        >
+                          <div className="item-body">
+                            <div className="item-title">{t.title}</div>
+                            <div className="item-meta">
+                              <span
+                                className="status-chip"
+                                style={{ color: statusColor(t.status) }}
+                              >
+                                <i className="dot" style={{ background: statusColor(t.status) }} />
+                                {statusES(t.status)}
+                              </span>
+                              {t.estMin ? (
+                                <>
+                                  <span className="meta-sep">·</span>
+                                  <span>{fmtMin(t.estMin)}</span>
+                                </>
+                              ) : null}
+                            </div>
+                          </div>
+                          <span className="assign-cta">Poner hora →</span>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </>
+            )}
+            <p className="hint">Toca una tarea para ponerle hora de inicio y duración.</p>
+          </section>
+        );
+      })()}
+
       {/* add task */}
       <button className="fab" aria-label="Añadir tarea" onClick={() => setSheet("add")}>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
@@ -1279,7 +1433,7 @@ export default function Home() {
         </svg>
       </button>
 
-      <BottomNav active={view} onNav={onNav} />
+      <BottomNav view={view} onNav={onNav} />
 
       {/* sheets */}
       {sheet && (
@@ -1644,6 +1798,54 @@ export default function Home() {
                 )}
               </>
             )}
+            {sheet === "time" && activeTask && (
+              <>
+                <h3 className="sheet-title serif">{activeTask.title}</h3>
+                <div className="q">
+                  <div className="q-label">Hora de inicio</div>
+                  <div className="chips" style={{ alignItems: "center" }}>
+                    <input
+                      type="time"
+                      className="time-input"
+                      value={hasTime(activeTask.date) ? timeHHMM_ET(activeTask.date!) : ""}
+                      onChange={(e) =>
+                        saveTime(activeTask, e.target.value ? e.target.value : null)
+                      }
+                    />
+                    {hasTime(activeTask.date) && (
+                      <button className="chip" onClick={() => saveTime(activeTask, null)}>
+                        Quitar hora
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <div className="q">
+                  <div className="q-label">Duración</div>
+                  <div className="chips">
+                    {TIME_OPTS.map((o) => (
+                      <button
+                        key={o.v}
+                        className={`chip ${activeTask.estMin === o.v ? "chip-on" : ""}`}
+                        onClick={() =>
+                          setField(activeTask, {
+                            estMin: activeTask.estMin === o.v ? null : o.v,
+                          })
+                        }
+                      >
+                        {o.l}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <button
+                  className="btn btn-ghost"
+                  style={{ width: "100%", marginTop: 16 }}
+                  onClick={() => setSheet(null)}
+                >
+                  Listo
+                </button>
+              </>
+            )}
             {sheet === "soon" && (
               <div className="soon">
                 <span className="big">🌱</span>
@@ -1678,32 +1880,52 @@ function Header({ onProfile }: { onProfile: () => void }) {
 
 /* ---------- bottom nav ---------- */
 function BottomNav({
-  active,
+  view,
   onNav,
 }: {
-  active: string;
+  view: string;
   onNav: (tab: string) => void;
 }) {
+  const sw = { strokeWidth: 1.7, strokeLinecap: "round", strokeLinejoin: "round" } as const;
   return (
     <nav className="nav">
       <div className="nav-inner">
         <button
-          className={`tab ${active === "hoy" ? "active" : ""}`}
+          className={`tab ${view === "hoy" ? "active" : ""}`}
           onClick={() => onNav("hoy")}
         >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"
-            strokeLinecap="round" strokeLinejoin="round">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" {...sw}>
             <path d="M4 11l8-6 8 6" />
             <path d="M6 10v9h12v-9" />
           </svg>
           Hoy
         </button>
         <button
-          className={`tab ${active === "semana" ? "active" : ""}`}
+          className={`tab ${view === "dia" ? "active" : ""}`}
+          onClick={() => onNav("dia")}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" {...sw}>
+            <circle cx="12" cy="12" r="8" />
+            <path d="M12 8v4l2.5 2" />
+          </svg>
+          Día
+        </button>
+        <button
+          className={`tab ${view === "planear" ? "active" : ""}`}
           onClick={() => onNav("semana")}
         >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"
-            strokeLinecap="round" strokeLinejoin="round">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" {...sw}>
+            <rect x="3.5" y="5" width="17" height="16" rx="2" />
+            <path d="M3.5 9.5h17M8 3.5v3M16 3.5v3" />
+            <path d="M7.5 13h3M7.5 17h3M13.5 13h3M13.5 17h3" />
+          </svg>
+          Semana
+        </button>
+        <button
+          className={`tab ${view === "semana" ? "active" : ""}`}
+          onClick={() => onNav("pendientes")}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" {...sw}>
             <path d="M4 6l1.4 1.4L8 4.8" />
             <path d="M4 12l1.4 1.4L8 10.8" />
             <path d="M4 18h2" />
@@ -1711,28 +1933,8 @@ function BottomNav({
           </svg>
           Pendientes
         </button>
-        <button
-          className={`tab ${active === "planear" ? "active" : ""}`}
-          onClick={() => onNav("planear")}
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"
-            strokeLinecap="round" strokeLinejoin="round">
-            <rect x="3.5" y="5" width="17" height="16" rx="2" />
-            <path d="M3.5 9.5h17M8 3.5v3M16 3.5v3" />
-            <path d="M7.5 13h3M7.5 17h3M13.5 13h3M13.5 17h3" />
-          </svg>
-          Planear
-        </button>
-        <button className="tab" onClick={() => onNav("proyectos")}>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"
-            strokeLinecap="round" strokeLinejoin="round">
-            <path d="M20 5C11 5 7 9.5 7 15c0 .8.1 1.6.3 2.3M20 5c0 7.5-4.5 10.8-10.5 11.3M20 5c-2 .3-5.8 1.3-8.3 4.2" />
-          </svg>
-          Proyectos
-        </button>
         <button className="tab" onClick={() => onNav("perfil")}>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"
-            strokeLinecap="round" strokeLinejoin="round">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" {...sw}>
             <circle cx="12" cy="8" r="3.5" />
             <path d="M5 20c0-3.6 3.1-6 7-6s7 2.4 7 6" />
           </svg>

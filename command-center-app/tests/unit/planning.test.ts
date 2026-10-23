@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { suggestPriority, weekBounds } from "../../src/lib/planning";
+import { suggestPriority, weekBounds, buildETDateTime, etOffset } from "../../src/lib/planning";
 
 test("suggestPriority: null until the three inputs are filled", () => {
   assert.equal(suggestPriority({ importance: null, impact: null, effort: null }), null);
@@ -53,4 +53,14 @@ test("weekBounds: handles month boundaries", () => {
   const w = weekBounds("2026-11-01"); // Sunday
   assert.equal(w.start, "2026-10-26");
   assert.equal(w.end, "2026-11-01");
+});
+
+test("etOffset: EDT in summer, EST in winter", () => {
+  assert.equal(etOffset("2026-07-15"), "-04:00"); // daylight time
+  assert.equal(etOffset("2026-01-15"), "-05:00"); // standard time
+});
+
+test("buildETDateTime: builds an ISO with the Eastern offset", () => {
+  assert.equal(buildETDateTime("2026-10-23", "09:00"), "2026-10-23T09:00:00-04:00");
+  assert.equal(buildETDateTime("2026-12-23", "09:00"), "2026-12-23T09:00:00-05:00");
 });
