@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { suggestPriority, buildETDateTime } from "@/lib/planning";
+import { suggestPriority, buildETDateTime, weekBounds } from "@/lib/planning";
 
 const NAME = "Samanta";
 
@@ -167,43 +167,6 @@ function Chevron() {
     </span>
   );
 }
-function TypeIcon({ type }: { type: string | null }) {
-  const t = (type ?? "").toLowerCase();
-  let path: React.ReactNode;
-  if (/red|social|instagram|tiktok|tik tok|marketing|content/.test(t)) {
-    path = (
-      <>
-        <rect x="6" y="2.5" width="12" height="19" rx="2.5" />
-        <path d="M10.5 18.5h3" />
-      </>
-    );
-  } else if (/casa|home|hogar|limpieza|personal/.test(t)) {
-    path = (
-      <>
-        <path d="M4 11l8-6 8 6" />
-        <path d="M6 10v9h12v-9" />
-      </>
-    );
-  } else if (/salud|health|gym|gimnasio|ejercicio/.test(t)) {
-    path = (
-      <path d="M12 20s-6-4-8-8c-1.3-2.9 0-5.5 2.8-5.5 1.6 0 2.7 1 3.2 1.8.5-.8 1.6-1.8 3.2-1.8C16 6.5 17.3 9.1 16 12c-2 4-4 8-4 8z" />
-    );
-  } else {
-    path = (
-      <>
-        <rect x="4" y="5" width="16" height="11" rx="1.5" />
-        <path d="M2.5 19.5h19" />
-      </>
-    );
-  }
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"
-      strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      {path}
-    </svg>
-  );
-}
-
 /* ---------- date helpers (Eastern) ---------- */
 function partsET(d: Date) {
   return new Intl.DateTimeFormat("en-CA", {
@@ -330,39 +293,6 @@ function fmtMin(total: number): string {
   if (h) return `${h}h`;
   return `${m}m`;
 }
-function taskWhen(dateStr: string | null, todayISO: string): string {
-  if (!dateStr) return "";
-  const datePart = dateStr.slice(0, 10);
-  const [y, m, d] = todayISO.split("-").map(Number);
-  const yest = new Date(Date.UTC(y, m - 1, d));
-  yest.setUTCDate(yest.getUTCDate() - 1);
-  const yestISO = `${yest.getUTCFullYear()}-${String(yest.getUTCMonth() + 1).padStart(2, "0")}-${String(yest.getUTCDate()).padStart(2, "0")}`;
-
-  let label: string;
-  if (datePart === todayISO) label = "Hoy";
-  else if (datePart === yestISO) label = "Ayer";
-  else if (datePart < todayISO) label = "Vencida";
-  else {
-    const [yy, mm, dd] = datePart.split("-").map(Number);
-    const dt = new Date(Date.UTC(yy, mm - 1, dd));
-    label = new Intl.DateTimeFormat("es-ES", {
-      weekday: "short",
-      day: "numeric",
-      timeZone: "UTC",
-    }).format(dt);
-  }
-
-  if (dateStr.length > 10 && dateStr.includes("T")) {
-    const time = new Intl.DateTimeFormat("en-US", {
-      hour: "numeric",
-      minute: "2-digit",
-      timeZone: "America/New_York",
-    }).format(new Date(dateStr));
-    return `${label}, ${time}`;
-  }
-  return label;
-}
-
 export default function Home() {
   const [data, setData] = useState<Data | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -394,8 +324,6 @@ export default function Home() {
   const [planLoading, setPlanLoading] = useState(false);
   const [planWeek, setPlanWeek] = useState<"this" | "next">("this");
 
-  const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const longPressFired = useRef(false);
   const sheetOpenedAt = useRef(0);
 
   useEffect(() => {
@@ -523,12 +451,7 @@ export default function Home() {
     const willBeDone = t.status !== "Done";
     const next = willBeDone ? "Done" : "Not started";
     markPending(t.id, true);
-    setData((d) =>
-      d ? { ...d, tasks: d.tasks.map((x) => (x.id === t.id ? { ...x, status: next } : x)) } : d
-    );
-    setWeekTasks((ws) =>
-      ws ? ws.map((x) => (x.id === t.id ? { ...x, status: next } : x)) : ws
-    );
+    applyPatch(t.id, { status: next });
     try {
       const res = await fetch("/api/task", {
         method: "POST",
@@ -537,12 +460,7 @@ export default function Home() {
       });
       if (!res.ok) throw new Error();
     } catch {
-      setData((d) =>
-        d ? { ...d, tasks: d.tasks.map((x) => (x.id === t.id ? { ...x, status: t.status } : x)) } : d
-      );
-      setWeekTasks((ws) =>
-        ws ? ws.map((x) => (x.id === t.id ? { ...x, status: t.status } : x)) : ws
-      );
+      applyPatch(t.id, { status: t.status });
       setError("No se pudo guardar la tarea");
     } finally {
       markPending(t.id, false);
@@ -610,41 +528,24 @@ export default function Home() {
   }
 
   // Move a task to a planning bucket (clears its date), or schedule it to today.
-  async function moveTask(t: Task, plan: string, scheduleToday = false) {
-    setSheet(null);
-    if (view === "hoy") {
-      setData((d) => (d ? { ...d, tasks: d.tasks.filter((x) => x.id !== t.id) } : d));
-    } else {
-      setWeekTasks((ws) => (ws ? ws.filter((x) => x.id !== t.id) : ws));
-    }
-    try {
-      const body = scheduleToday
-        ? { id: t.id, plan: "Agendado", date: data!.today }
-        : { id: t.id, plan, clearDate: true };
-      const res = await fetch("/api/task", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) throw new Error();
-      if (view === "semana") loadWeek();
-    } catch {
-      setError("No se pudo mover la tarea");
-      if (view === "hoy") load(data!.date);
-      else loadWeek();
-    }
+  // Patch a task in place across every list it may appear in.
+  function applyPatch(id: string, patch: Partial<Task>) {
+    const f = (x: Task) => (x.id === id ? { ...x, ...patch } : x);
+    setData((d) => (d ? { ...d, tasks: d.tasks.map(f) } : d));
+    setWeekTasks((ws) => (ws ? ws.map(f) : ws));
+    setPlanData((p) => (p ? { ...p, pool: p.pool.map(f), week: p.week.map(f) } : p));
+    setActiveTask((cur) => (cur && cur.id === id ? { ...cur, ...patch } : cur));
+  }
+  // Re-fetch the current view's source (used after moves or on error).
+  function reloadCurrent() {
+    if (!data) return;
+    if (view === "hoy" || view === "dia") load(data.date);
+    else if (view === "planear") loadPlan(planWeek);
+    else if (view === "semana") loadWeek();
   }
 
   async function setStatus(t: Task, status: string) {
-    setSheet(null);
-    if (pending.has(t.id)) return;
-    markPending(t.id, true);
-    setData((d) =>
-      d ? { ...d, tasks: d.tasks.map((x) => (x.id === t.id ? { ...x, status } : x)) } : d
-    );
-    setWeekTasks((ws) =>
-      ws ? ws.map((x) => (x.id === t.id ? { ...x, status } : x)) : ws
-    );
+    applyPatch(t.id, { status });
     try {
       const res = await fetch("/api/task", {
         method: "POST",
@@ -653,21 +554,26 @@ export default function Home() {
       });
       if (!res.ok) throw new Error();
     } catch {
-      setData((d) =>
-        d ? { ...d, tasks: d.tasks.map((x) => (x.id === t.id ? { ...x, status: t.status } : x)) } : d
-      );
-      setWeekTasks((ws) =>
-        ws ? ws.map((x) => (x.id === t.id ? { ...x, status: t.status } : x)) : ws
-      );
       setError("No se pudo cambiar el estado");
-    } finally {
-      markPending(t.id, false);
+      reloadCurrent();
     }
   }
 
-  function openStatusSheet(t: Task) {
-    setActiveTask(t);
-    setSheet("status");
+  // Move to a planning bucket (clears the date).
+  async function moveTask(t: Task, plan: string) {
+    applyPatch(t.id, { plan, date: null });
+    try {
+      const res = await fetch("/api/task", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: t.id, plan, clearDate: true }),
+      });
+      if (!res.ok) throw new Error();
+      reloadCurrent();
+    } catch {
+      setError("No se pudo mover la tarea");
+      reloadCurrent();
+    }
   }
 
   function openSoon(label: string) {
@@ -696,18 +602,9 @@ export default function Home() {
     }
   }
 
-  // Assign a pool task to a specific day: set its date + Planeación "Agendado".
+  // Assign a task to a specific day: set its date + Planeación "Agendado".
   async function assignTaskToDay(t: Task, dayISO: string) {
-    setSheet(null);
-    setPlanData((p) =>
-      p
-        ? {
-            ...p,
-            pool: p.pool.filter((x) => x.id !== t.id),
-            week: [...p.week, { ...t, date: dayISO, plan: "Agendado" }],
-          }
-        : p
-    );
+    applyPatch(t.id, { date: dayISO, plan: "Agendado" });
     try {
       const res = await fetch("/api/task", {
         method: "POST",
@@ -715,36 +612,36 @@ export default function Home() {
         body: JSON.stringify({ id: t.id, plan: "Agendado", date: dayISO }),
       });
       if (!res.ok) throw new Error();
-      loadPlan(planWeek);
+      reloadCurrent();
     } catch {
-      setError("No se pudo asignar la tarea");
-      loadPlan(planWeek);
+      setError("No se pudo agendar la tarea");
+      reloadCurrent();
     }
   }
 
-  function openAssignSheet(t: Task) {
-    setActiveTask(t);
-    setSheet("assign");
-  }
-
-  function openAnalyzeSheet(t: Task) {
+  // The one task sheet for every tab. Opens with what we know, then fills the
+  // Notion detail (URL + extra fields) in the background.
+  async function openTaskSheet(t: Task) {
     setActiveTask(t);
     setConfirmDelete(false);
-    setSheet("analyze");
-  }
-
-  function openTimeSheet(t: Task) {
-    setActiveTask(t);
-    setSheet("time");
+    setTaskDetail(basicDetail(t));
+    setSheet("task");
+    try {
+      const res = await fetch(`/api/task?id=${t.id}`, { cache: "no-store" });
+      if (res.ok) {
+        const full = await res.json();
+        setTaskDetail((cur) => (cur && cur.id === full.id ? full : cur));
+      }
+    } catch {
+      // the sheet still works with the basics
+    }
   }
 
   // Set or clear a task's start time for the current day.
   async function saveTime(t: Task, hhmm: string | null) {
     if (!data) return;
     const newDate = hhmm ? buildETDateTime(data.date, hhmm) : data.date;
-    const apply = (x: Task) => (x.id === t.id ? { ...x, date: newDate } : x);
-    setData((d) => (d ? { ...d, tasks: d.tasks.map(apply) } : d));
-    setActiveTask((cur) => (cur && cur.id === t.id ? { ...cur, date: newDate } : cur));
+    applyPatch(t.id, { date: newDate });
     try {
       const res = await fetch("/api/task", {
         method: "POST",
@@ -754,25 +651,18 @@ export default function Home() {
       if (!res.ok) throw new Error();
     } catch {
       setError("No se pudo guardar la hora");
-      load(data.date);
+      reloadCurrent();
     }
   }
 
   // Save one or more scoring fields (Priority, Importance, estMin, Impact, Effort).
   async function setField(t: Task, patch: Partial<Task>) {
-    const apply = (x: Task) => (x.id === t.id ? { ...x, ...patch } : x);
-    setPlanData((p) =>
-      p ? { ...p, pool: p.pool.map(apply), week: p.week.map(apply) } : p
-    );
-    setData((d) => (d ? { ...d, tasks: d.tasks.map(apply) } : d));
-    setActiveTask((cur) => (cur && cur.id === t.id ? { ...cur, ...patch } : cur));
+    applyPatch(t.id, patch);
     try {
       const fields: any = {};
-      if ("priority" in patch) fields.priority = patch.priority;
-      if ("importance" in patch) fields.importance = patch.importance;
-      if ("estMin" in patch) fields.estMin = patch.estMin;
-      if ("impact" in patch) fields.impact = patch.impact;
-      if ("effort" in patch) fields.effort = patch.effort;
+      for (const k of ["priority", "importance", "estMin", "impact", "effort"] as const) {
+        if (k in patch) fields[k] = (patch as any)[k];
+      }
       const res = await fetch("/api/task", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -781,18 +671,8 @@ export default function Home() {
       if (!res.ok) throw new Error();
     } catch {
       setError("No se pudo guardar");
-      loadPlan(planWeek);
+      reloadCurrent();
     }
-  }
-
-  // Long-press on a pool task → choose the day.
-  function poolPressStart(t: Task) {
-    longPressFired.current = false;
-    pressTimer.current = setTimeout(() => {
-      longPressFired.current = true;
-      openAssignSheet(t);
-      if (typeof navigator !== "undefined" && navigator.vibrate) navigator.vibrate(12);
-    }, 450);
   }
 
   async function removeTask(t: Task) {
@@ -814,115 +694,71 @@ export default function Home() {
       if (!res.ok) throw new Error();
     } catch {
       setError("No se pudo borrar la tarea");
-      if (view === "hoy") load(data!.date);
-      else if (view === "planear") loadPlan(planWeek);
-      else loadWeek();
+      reloadCurrent();
     }
   }
 
-  async function openTaskDetail(t: Task) {
-    setActiveTask(t);
-    setConfirmDelete(false);
-    let opened = false;
-    const reveal = (detail: TaskDetailData) => {
-      if (opened) return;
-      opened = true;
-      setTaskDetail(detail);
-      setSheet("task");
-    };
-    // If Notion is slow, open with the basics so the tap feels responsive.
-    const fallback = setTimeout(() => reveal(basicDetail(t)), 450);
-    try {
-      const res = await fetch(`/api/task?id=${t.id}`, { cache: "no-store" });
-      const full = res.ok ? await res.json() : null;
-      clearTimeout(fallback);
-      if (full && !opened) {
-        reveal(full); // fast path: open once, already at final height
-      } else if (full) {
-        // basics were shown first (slow network): fill in the rest
-        setTaskDetail((cur) => (cur && cur.id === full.id ? full : cur));
-      } else {
-        reveal(basicDetail(t));
-      }
-    } catch {
-      clearTimeout(fallback);
-      reveal(basicDetail(t));
-    }
-  }
-
-  function pressStart(t: Task) {
-    longPressFired.current = false;
-    pressTimer.current = setTimeout(() => {
-      longPressFired.current = true;
-      setActiveTask(t);
-      setSheet("plan");
-      if (typeof navigator !== "undefined" && navigator.vibrate) navigator.vibrate(12);
-    }, 450);
-  }
-  function pressEnd() {
-    if (pressTimer.current) {
-      clearTimeout(pressTimer.current);
-      pressTimer.current = null;
-    }
-  }
-  function afterPress(fn: () => void) {
-    if (longPressFired.current) {
-      longPressFired.current = false;
-      return;
-    }
-    fn();
-  }
-
-  function renderTask(t: Task) {
+  // The single task card used in every list view.
+  function renderCard(t: Task) {
     const done = t.status === "Done";
+    const worth =
+      t.impact != null && t.effort != null
+        ? t.impact >= 4 && t.effort <= 2
+          ? "win"
+          : t.effort >= 4 && t.impact <= 2
+          ? "heavy"
+          : ""
+        : "";
+    const overdue = !!t.date && !done && t.date.slice(0, 10) < data!.today;
+    const clock = hasTime(t.date) ? clockES(t.date!) : "";
     return (
-      <div
-        key={t.id}
-        className={`item ${done ? "done" : ""}`}
-        onPointerDown={() => pressStart(t)}
-        onPointerUp={pressEnd}
-        onPointerLeave={pressEnd}
-        onPointerCancel={pressEnd}
-        onContextMenu={(e) => e.preventDefault()}
-      >
+      <div key={t.id} className={`item ${done ? "done" : ""}`}>
         <span
           onClick={(e) => {
             e.stopPropagation();
-            afterPress(() => toggleTask(t));
+            toggleTask(t);
           }}
         >
           <CheckMark />
         </span>
-        <div className="item-body" onClick={() => afterPress(() => openTaskDetail(t))}>
-          <div className="item-title">{t.title}</div>
+        <div className="item-body" onClick={() => openTaskSheet(t)}>
+          <div className="item-title">
+            {worth === "win" && "⭐ "}
+            {worth === "heavy" && "🪨 "}
+            {t.title}
+          </div>
           <div className="item-meta">
-            <span
-              className="status-chip"
-              style={{ color: statusColor(t.status) }}
-              onClick={(e) => {
-                e.stopPropagation();
-                afterPress(() => openStatusSheet(t));
-              }}
-            >
+            <span className="status-chip" style={{ color: statusColor(t.status) }}>
               <i className="dot" style={{ background: statusColor(t.status) }} />
               {statusES(t.status)}
             </span>
-            {t.type && (
+            {t.priority && (
               <>
                 <span className="meta-sep">·</span>
-                <TypeIcon type={t.type} />
-                <span>{t.type}</span>
+                <span className="prio-chip">{prioES(t.priority)}</span>
               </>
             )}
-            {t.date && (
+            {t.estMin ? (
               <>
                 <span className="meta-sep">·</span>
-                <span>{taskWhen(t.date, data!.today)}</span>
+                <span>{fmtMin(t.estMin)}</span>
+              </>
+            ) : null}
+            {clock && (
+              <>
+                <span className="meta-sep">·</span>
+                <span>{clock}</span>
+              </>
+            )}
+            {overdue && (
+              <>
+                <span className="meta-sep">·</span>
+                <span className="tag overdue">Vencida</span>
               </>
             )}
           </div>
         </div>
-        <span onClick={() => afterPress(() => openTaskDetail(t))}>
+        <span onClick={() => openTaskSheet(t)}>
           <Chevron />
         </span>
       </div>
@@ -1051,7 +887,7 @@ export default function Home() {
               {data.tasks.length === 0 ? (
                 <div className="empty">Nada pendiente. Respira. ✦</div>
               ) : (
-                <div className="list">{data.tasks.map((t) => renderTask(t))}</div>
+                <div className="list">{data.tasks.map((t) => renderCard(t))}</div>
               )}
               <p className="hint">Mantén presionada una tarea para moverla de semana.</p>
             </section>
@@ -1091,14 +927,14 @@ export default function Home() {
                     {g.items.length === 0 ? (
                       <div className="bucket-empty">—</div>
                     ) : (
-                      <div className="list">{g.items.map((t) => renderTask(t))}</div>
+                      <div className="list">{g.items.map((t) => renderCard(t))}</div>
                     )}
                   </div>
                 ))}
                 {unclassified.length > 0 && (
                   <div className="bucket">
                     <h3 className="bucket-title">Sin clasificar</h3>
-                    <div className="list">{unclassified.map((t) => renderTask(t))}</div>
+                    <div className="list">{unclassified.map((t) => renderCard(t))}</div>
                   </div>
                 )}
               </>
@@ -1223,59 +1059,9 @@ export default function Home() {
                         {sortedPool.length === 0 ? (
                           <div className="empty">¡Semana repartida! ✦</div>
                         ) : (
-                          <div className="list">
-                            {sortedPool.map((t) => {
-                              const worth =
-                                t.impact != null && t.effort != null
-                                  ? t.impact >= 4 && t.effort <= 2
-                                    ? "win"
-                                    : t.effort >= 4 && t.impact <= 2
-                                    ? "heavy"
-                                    : ""
-                                  : "";
-                              return (
-                                <div
-                                  key={t.id}
-                                  className="item"
-                                  onPointerDown={() => poolPressStart(t)}
-                                  onPointerUp={pressEnd}
-                                  onPointerLeave={pressEnd}
-                                  onPointerCancel={pressEnd}
-                                  onContextMenu={(e) => e.preventDefault()}
-                                  onClick={() => afterPress(() => openAnalyzeSheet(t))}
-                                >
-                                  <div className="item-body">
-                                    <div className="item-title">
-                                      {worth === "win" && "⭐ "}
-                                      {worth === "heavy" && "🪨 "}
-                                      {t.title}
-                                    </div>
-                                    <div className="item-meta">
-                                      {t.priority && (
-                                        <span className="prio-chip">{prioES(t.priority)}</span>
-                                      )}
-                                      {t.estMin ? (
-                                        <>
-                                          {t.priority && <span className="meta-sep">·</span>}
-                                          <span>{fmtMin(t.estMin)}</span>
-                                        </>
-                                      ) : (
-                                        <>
-                                          {t.priority && <span className="meta-sep">·</span>}
-                                          <span className="muted-mini">sin estimar</span>
-                                        </>
-                                      )}
-                                    </div>
-                                  </div>
-                                  <Chevron />
-                                </div>
-                              );
-                            })}
-                          </div>
+                          <div className="list">{sortedPool.map((t) => renderCard(t))}</div>
                         )}
-                        <p className="hint">
-                          Toca una tarea para puntuarla · mantén presionada para elegir el día.
-                        </p>
+                        <p className="hint">Toca una tarea para puntuarla y agendarla.</p>
                       </>
                     );
                   })()}
@@ -1314,7 +1100,7 @@ export default function Home() {
                               <div
                                 key={t.id}
                                 className={`agenda-item ${t.status === "Done" ? "done" : ""}`}
-                                onClick={() => openTaskDetail(t)}
+                                onClick={() => openTaskSheet(t)}
                               >
                                 <i className="dot" style={{ background: statusColor(t.status) }} />
                                 <span className="agenda-title">{t.title}</span>
@@ -1362,7 +1148,7 @@ export default function Home() {
                         <div
                           key={t.id}
                           className={`dayblock ${t.status === "Done" ? "done" : ""}`}
-                          onClick={() => openTimeSheet(t)}
+                          onClick={() => openTaskSheet(t)}
                         >
                           <div className="dayblock-time">
                             {start}
@@ -1388,35 +1174,7 @@ export default function Home() {
                         <span>Sin hora</span>
                       </div>
                     )}
-                    <div className="list">
-                      {untimed.map((t) => (
-                        <div
-                          key={t.id}
-                          className={`item ${t.status === "Done" ? "done" : ""}`}
-                          onClick={() => openTimeSheet(t)}
-                        >
-                          <div className="item-body">
-                            <div className="item-title">{t.title}</div>
-                            <div className="item-meta">
-                              <span
-                                className="status-chip"
-                                style={{ color: statusColor(t.status) }}
-                              >
-                                <i className="dot" style={{ background: statusColor(t.status) }} />
-                                {statusES(t.status)}
-                              </span>
-                              {t.estMin ? (
-                                <>
-                                  <span className="meta-sep">·</span>
-                                  <span>{fmtMin(t.estMin)}</span>
-                                </>
-                              ) : null}
-                            </div>
-                          </div>
-                          <span className="assign-cta">Poner hora →</span>
-                        </div>
-                      ))}
-                    </div>
+                    <div className="list">{untimed.map((t) => renderCard(t))}</div>
                   </>
                 )}
               </>
@@ -1494,57 +1252,191 @@ export default function Home() {
                 </form>
               </>
             )}
-            {sheet === "plan" && activeTask && (
-              <>
-                <h3 className="sheet-title serif">{activeTask.title}</h3>
-                <p className="sheet-sub">Mover a…</p>
-                <div className="sheet-form">
-                  {BUCKETS.map((b) => (
-                    <button
-                      key={b.key}
-                      className={`btn ${activeTask.plan === b.key ? "" : "btn-ghost"}`}
-                      onClick={() => moveTask(activeTask, b.key)}
-                    >
-                      {b.label}
-                    </button>
-                  ))}
-                  {!activeTask.date && (
-                    <button
-                      className="btn btn-ghost"
-                      onClick={() => moveTask(activeTask, "Agendado", true)}
-                    >
-                      Agendar para hoy
-                    </button>
-                  )}
-                </div>
-              </>
-            )}
             {sheet === "task" && activeTask && (() => {
               const live =
-                data.tasks.find((x) => x.id === activeTask.id) ??
+                (data?.tasks ?? []).find((x) => x.id === activeTask.id) ??
                 (weekTasks ?? []).find((x) => x.id === activeTask.id) ??
+                (planData?.pool ?? []).find((x) => x.id === activeTask.id) ??
+                (planData?.week ?? []).find((x) => x.id === activeTask.id) ??
                 activeTask;
               const done = live.status === "Done";
+              const sug = suggestPriority(live);
+              const showSug = sug && sug !== live.priority;
+              const days = data ? weekBounds(data.today).days : [];
               return (
                 <>
-                  <h3 className="sheet-title serif">{activeTask.title}</h3>
+                  <h3 className="sheet-title serif">{live.title}</h3>
+
                   <button
                     className={`btn ${done ? "btn-ghost" : ""}`}
-                    style={{ width: "100%", marginTop: 6, marginBottom: 16 }}
-                    onClick={() => toggleTask(live)}
+                    style={{ width: "100%", marginTop: 4, marginBottom: 6 }}
+                    onClick={() => setStatus(live, done ? "Not started" : "Done")}
                   >
                     {done ? "Marcar como no hecha" : "Marcar como hecha ✓"}
                   </button>
-                  {taskDetail && taskDetail.fields.length > 0 && (
-                    <div className="detail">
-                      {taskDetail.fields.map((f) => (
-                        <div className="detail-row" key={f.label}>
-                          <span className="detail-label">{labelES(f.label)}</span>
-                          <span className="detail-value">{f.value}</span>
-                        </div>
+
+                  <div className="q">
+                    <div className="q-label">Estado</div>
+                    <div className="chips">
+                      {STATUS_OPTIONS.map((s) => (
+                        <button
+                          key={s}
+                          className={`chip ${live.status === s ? "chip-on" : ""}`}
+                          onClick={() => setStatus(live, s)}
+                        >
+                          {statusES(s)}
+                        </button>
                       ))}
                     </div>
-                  )}
+                  </div>
+
+                  <div className="sheet-divider">
+                    <span>Puntuar</span>
+                  </div>
+
+                  <div className="q">
+                    <div className="q-label">Importancia</div>
+                    <div className="chips">
+                      {IMPORTANCE_OPTS.map((o) => (
+                        <button
+                          key={o.v}
+                          className={`chip ${live.importance === o.v ? "chip-on" : ""}`}
+                          onClick={() =>
+                            setField(live, { importance: live.importance === o.v ? null : o.v })
+                          }
+                        >
+                          {o.l}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="q">
+                    <div className="q-label">Impacto</div>
+                    <div className="chips">
+                      {SCALE.map((n) => (
+                        <button
+                          key={n}
+                          className={`chip chip-num ${live.impact === n ? "chip-on" : ""}`}
+                          onClick={() => setField(live, { impact: live.impact === n ? null : n })}
+                        >
+                          {n}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="q">
+                    <div className="q-label">Esfuerzo</div>
+                    <div className="chips">
+                      {SCALE.map((n) => (
+                        <button
+                          key={n}
+                          className={`chip chip-num ${live.effort === n ? "chip-on" : ""}`}
+                          onClick={() => setField(live, { effort: live.effort === n ? null : n })}
+                        >
+                          {n}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="q">
+                    <div className="q-label">Tiempo estimado</div>
+                    <div className="chips">
+                      {TIME_OPTS.map((o) => (
+                        <button
+                          key={o.v}
+                          className={`chip ${live.estMin === o.v ? "chip-on" : ""}`}
+                          onClick={() => setField(live, { estMin: live.estMin === o.v ? null : o.v })}
+                        >
+                          {o.l}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="q">
+                    <div className="q-head">
+                      <div className="q-label">Prioridad</div>
+                      {showSug && (
+                        <button
+                          className="suggest-pill"
+                          onClick={() => setField(live, { priority: sug })}
+                        >
+                          ✦ Sugerida: {prioES(sug!)}
+                        </button>
+                      )}
+                    </div>
+                    <div className="chips">
+                      {PRIORITY_OPTS.map((o) => (
+                        <button
+                          key={o.v}
+                          className={`chip ${live.priority === o.v ? "chip-on" : ""} ${
+                            sug === o.v && live.priority !== o.v ? "chip-suggested" : ""
+                          }`}
+                          onClick={() =>
+                            setField(live, { priority: live.priority === o.v ? null : o.v })
+                          }
+                        >
+                          {o.l}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="sheet-divider">
+                    <span>Agendar</span>
+                  </div>
+
+                  <div className="q">
+                    <div className="q-label">Día</div>
+                    <div className="assign-days">
+                      {days.map((iso) => {
+                        const sel = (live.date ?? "").slice(0, 10) === iso;
+                        return (
+                          <button
+                            key={iso}
+                            className={`btn assign-day ${sel ? "" : "btn-ghost"}`}
+                            onClick={() => assignTaskToDay(live, iso)}
+                          >
+                            <span>
+                              {shortDayES(iso)}
+                              {iso === data!.today ? " · hoy" : ""}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <div className="q">
+                    <div className="q-label">Hora de inicio</div>
+                    <div className="chips" style={{ alignItems: "center" }}>
+                      <input
+                        type="time"
+                        className="time-input"
+                        value={hasTime(live.date) ? timeHHMM_ET(live.date!) : ""}
+                        onChange={(e) => saveTime(live, e.target.value ? e.target.value : null)}
+                      />
+                      {hasTime(live.date) && (
+                        <button className="chip" onClick={() => saveTime(live, null)}>
+                          Quitar hora
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="sheet-divider">
+                    <span>Mover</span>
+                  </div>
+                  <div className="chips">
+                    {BUCKETS.map((b) => (
+                      <button
+                        key={b.key}
+                        className={`chip ${live.plan === b.key ? "chip-on" : ""}`}
+                        onClick={() => moveTask(live, b.key)}
+                      >
+                        {b.label}
+                      </button>
+                    ))}
+                  </div>
+
                   {taskDetail?.url && (
                     <a
                       className="btn btn-ghost"
@@ -1555,27 +1447,24 @@ export default function Home() {
                         display: "block",
                         textAlign: "center",
                         textDecoration: "none",
-                        marginTop: 14,
+                        marginTop: 16,
                       }}
                     >
                       Abrir en Notion ↗
                     </a>
                   )}
+
                   {!confirmDelete ? (
-                    <button
-                      className="btn-text-danger"
-                      onClick={() => setConfirmDelete(true)}
-                    >
+                    <button className="btn-text-danger" onClick={() => setConfirmDelete(true)}>
                       Borrar tarea
                     </button>
                   ) : (
                     <div className="confirm">
-                      <p className="confirm-q">¿Borrar esta tarea? Se mueve a la papelera de Notion.</p>
+                      <p className="confirm-q">
+                        ¿Borrar esta tarea? Se mueve a la papelera de Notion.
+                      </p>
                       <div className="confirm-row">
-                        <button
-                          className="btn btn-ghost"
-                          onClick={() => setConfirmDelete(false)}
-                        >
+                        <button className="btn btn-ghost" onClick={() => setConfirmDelete(false)}>
                           Cancelar
                         </button>
                         <button className="btn btn-danger" onClick={() => removeTask(live)}>
@@ -1587,265 +1476,6 @@ export default function Home() {
                 </>
               );
             })()}
-            {sheet === "status" && activeTask && (
-              <>
-                <h3 className="sheet-title serif">{activeTask.title}</h3>
-                <p className="sheet-sub">Cambiar estado</p>
-                <div className="sheet-form">
-                  {STATUS_OPTIONS.map((s) => {
-                    const current = activeTask.status === s;
-                    return (
-                      <button
-                        key={s}
-                        className={`btn status-btn ${current ? "" : "btn-ghost"}`}
-                        onClick={() => setStatus(activeTask, s)}
-                      >
-                        <i className="dot" style={{ background: statusColor(s) }} />
-                        {statusES(s)}
-                        {current && <span className="status-current"> ✓</span>}
-                      </button>
-                    );
-                  })}
-                </div>
-              </>
-            )}
-            {sheet === "assign" && activeTask && planData && (
-              <>
-                <h3 className="sheet-title serif">{activeTask.title}</h3>
-                <p className="sheet-sub">¿Qué día la haces?</p>
-                <div className="assign-days">
-                  {planData.weekDays.map((iso) => {
-                    const n = planData.week.filter(
-                      (t) => (t.date ?? "").slice(0, 10) === iso && t.status !== "Done"
-                    ).length;
-                    return (
-                      <button
-                        key={iso}
-                        className="btn btn-ghost assign-day"
-                        onClick={() => assignTaskToDay(activeTask, iso)}
-                      >
-                        <span>
-                          {shortDayES(iso)}
-                          {iso === planData.today ? " · hoy" : ""}
-                        </span>
-                        {n > 0 && <span className="assign-load">{n}</span>}
-                      </button>
-                    );
-                  })}
-                </div>
-              </>
-            )}
-            {sheet === "analyze" && activeTask && (
-              <>
-                <h3 className="sheet-title serif">{activeTask.title}</h3>
-                {activeTask.impact != null && activeTask.effort != null && (
-                  <p className="sheet-sub">
-                    {activeTask.impact >= 4 && activeTask.effort <= 2
-                      ? "⭐ Vale la pena — mucho impacto, poco esfuerzo"
-                      : activeTask.effort >= 4 && activeTask.impact <= 2
-                      ? "🪨 Pesada — poco impacto, mucho esfuerzo"
-                      : "Puntuada"}
-                  </p>
-                )}
-
-                <div className="q">
-                  <div className="q-label">Importancia</div>
-                  <div className="chips">
-                    {IMPORTANCE_OPTS.map((o) => (
-                      <button
-                        key={o.v}
-                        className={`chip ${activeTask.importance === o.v ? "chip-on" : ""}`}
-                        onClick={() =>
-                          setField(activeTask, {
-                            importance: activeTask.importance === o.v ? null : o.v,
-                          })
-                        }
-                      >
-                        {o.l}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="q">
-                  <div className="q-label">Impacto</div>
-                  <div className="chips">
-                    {SCALE.map((n) => (
-                      <button
-                        key={n}
-                        className={`chip chip-num ${activeTask.impact === n ? "chip-on" : ""}`}
-                        onClick={() =>
-                          setField(activeTask, { impact: activeTask.impact === n ? null : n })
-                        }
-                      >
-                        {n}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="q">
-                  <div className="q-label">Esfuerzo</div>
-                  <div className="chips">
-                    {SCALE.map((n) => (
-                      <button
-                        key={n}
-                        className={`chip chip-num ${activeTask.effort === n ? "chip-on" : ""}`}
-                        onClick={() =>
-                          setField(activeTask, { effort: activeTask.effort === n ? null : n })
-                        }
-                      >
-                        {n}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="q">
-                  <div className="q-label">Tiempo estimado</div>
-                  <div className="chips">
-                    {TIME_OPTS.map((o) => (
-                      <button
-                        key={o.v}
-                        className={`chip ${activeTask.estMin === o.v ? "chip-on" : ""}`}
-                        onClick={() =>
-                          setField(activeTask, {
-                            estMin: activeTask.estMin === o.v ? null : o.v,
-                          })
-                        }
-                      >
-                        {o.l}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {(() => {
-                  const sug = suggestPriority(activeTask);
-                  const showSug = sug && sug !== activeTask.priority;
-                  const ready = sug != null;
-                  return (
-                    <div className="q">
-                      <div className="q-head">
-                        <div className="q-label">Prioridad</div>
-                        {showSug && (
-                          <button
-                            className="suggest-pill"
-                            onClick={() => setField(activeTask, { priority: sug })}
-                          >
-                            ✦ Sugerida: {prioES(sug!)}
-                          </button>
-                        )}
-                      </div>
-                      {!ready && (
-                        <p className="q-note">
-                          Puntúa Importancia, Impacto y Esfuerzo y te sugiero una prioridad.
-                        </p>
-                      )}
-                      <div className="chips">
-                        {PRIORITY_OPTS.map((o) => (
-                          <button
-                            key={o.v}
-                            className={`chip ${activeTask.priority === o.v ? "chip-on" : ""} ${
-                              sug === o.v && activeTask.priority !== o.v ? "chip-suggested" : ""
-                            }`}
-                            onClick={() =>
-                              setField(activeTask, {
-                                priority: activeTask.priority === o.v ? null : o.v,
-                              })
-                            }
-                          >
-                            {o.l}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })()}
-
-                <button
-                  className="btn"
-                  style={{ width: "100%", marginTop: 16 }}
-                  onClick={() => openAssignSheet(activeTask)}
-                >
-                  Elegir día →
-                </button>
-
-                {!confirmDelete ? (
-                  <button
-                    className="btn-text-danger"
-                    onClick={() => setConfirmDelete(true)}
-                  >
-                    Borrar tarea
-                  </button>
-                ) : (
-                  <div className="confirm">
-                    <p className="confirm-q">
-                      ¿Borrar esta tarea? Se mueve a la papelera de Notion.
-                    </p>
-                    <div className="confirm-row">
-                      <button
-                        className="btn btn-ghost"
-                        onClick={() => setConfirmDelete(false)}
-                      >
-                        Cancelar
-                      </button>
-                      <button className="btn btn-danger" onClick={() => removeTask(activeTask)}>
-                        Sí, borrar
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-            {sheet === "time" && activeTask && (
-              <>
-                <h3 className="sheet-title serif">{activeTask.title}</h3>
-                <div className="q">
-                  <div className="q-label">Hora de inicio</div>
-                  <div className="chips" style={{ alignItems: "center" }}>
-                    <input
-                      type="time"
-                      className="time-input"
-                      value={hasTime(activeTask.date) ? timeHHMM_ET(activeTask.date!) : ""}
-                      onChange={(e) =>
-                        saveTime(activeTask, e.target.value ? e.target.value : null)
-                      }
-                    />
-                    {hasTime(activeTask.date) && (
-                      <button className="chip" onClick={() => saveTime(activeTask, null)}>
-                        Quitar hora
-                      </button>
-                    )}
-                  </div>
-                </div>
-                <div className="q">
-                  <div className="q-label">Duración</div>
-                  <div className="chips">
-                    {TIME_OPTS.map((o) => (
-                      <button
-                        key={o.v}
-                        className={`chip ${activeTask.estMin === o.v ? "chip-on" : ""}`}
-                        onClick={() =>
-                          setField(activeTask, {
-                            estMin: activeTask.estMin === o.v ? null : o.v,
-                          })
-                        }
-                      >
-                        {o.l}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <button
-                  className="btn btn-ghost"
-                  style={{ width: "100%", marginTop: 16 }}
-                  onClick={() => setSheet(null)}
-                >
-                  Listo
-                </button>
-              </>
-            )}
             {sheet === "soon" && (
               <div className="soon">
                 <span className="big">🌱</span>
