@@ -1122,10 +1122,42 @@ export default function Home() {
       )}
 
       {view === "dia" && (() => {
+        const hm = (s: string) => s.replace(/^0/, "");
+        // Three fixed anchors structure the day (visual guides, not Notion tasks).
+        const DAYPARTS = [
+          { key: "am", ico: "☀", label: "Rutina matutina", time: "07:00", from: "00:00", to: "13:00" },
+          { key: "noon", ico: "✦", label: "Almuerzo", time: "13:00", from: "13:00", to: "21:00" },
+          { key: "pm", ico: "☾", label: "Rutina de noche", time: "21:00", from: "21:00", to: "24:99" },
+        ];
         const timed = data.tasks
           .filter((t) => hasTime(t.date))
           .sort((a, b) => (a.date ?? "").localeCompare(b.date ?? ""));
         const untimed = data.tasks.filter((t) => !hasTime(t.date));
+        const partKey = (t: Task) => {
+          const h = timeHHMM_ET(t.date!);
+          return (DAYPARTS.find((d) => h >= d.from && h < d.to) ?? DAYPARTS[0]).key;
+        };
+        const renderBlock = (t: Task) => {
+          const start = clockES(t.date ?? "");
+          const end = t.estMin ? clockPlusES(t.date ?? "", t.estMin) : "";
+          return (
+            <div
+              key={t.id}
+              className={`dayblock ${t.status === "Done" ? "done" : ""}`}
+              onClick={() => openTaskSheet(t)}
+            >
+              <div className="dayblock-time">
+                {start}
+                {end && <span className="dayblock-end">{end}</span>}
+              </div>
+              <div className="dayblock-body">
+                <i className="dot" style={{ background: statusColor(t.status) }} />
+                <span className="dayblock-title">{t.title}</span>
+                {t.estMin ? <span className="agenda-time">{fmtMin(t.estMin)}</span> : null}
+              </div>
+            </div>
+          );
+        };
         return (
           <section className="section" style={{ marginTop: 22 }}>
             <div className="section-head">
@@ -1135,51 +1167,35 @@ export default function Home() {
               </span>
             </div>
 
-            {data.tasks.length === 0 ? (
-              <div className="empty">Nada para hoy. Respira. ✦</div>
-            ) : (
-              <>
-                {timed.length > 0 && (
-                  <div className="daytl">
-                    {timed.map((t) => {
-                      const start = clockES(t.date ?? "");
-                      const end = t.estMin ? clockPlusES(t.date ?? "", t.estMin) : "";
-                      return (
-                        <div
-                          key={t.id}
-                          className={`dayblock ${t.status === "Done" ? "done" : ""}`}
-                          onClick={() => openTaskSheet(t)}
-                        >
-                          <div className="dayblock-time">
-                            {start}
-                            {end && <span className="dayblock-end">{end}</span>}
-                          </div>
-                          <div className="dayblock-body">
-                            <i className="dot" style={{ background: statusColor(t.status) }} />
-                            <span className="dayblock-title">{t.title}</span>
-                            {t.estMin ? (
-                              <span className="agenda-time">{fmtMin(t.estMin)}</span>
-                            ) : null}
-                          </div>
-                        </div>
-                      );
-                    })}
+            {DAYPARTS.map((d) => {
+              const items = timed.filter((t) => partKey(t) === d.key);
+              return (
+                <div key={d.key}>
+                  <div className="daypart">
+                    <span className="daypart-name">
+                      <span className="daypart-ico">{d.ico}</span>
+                      {d.label}
+                    </span>
+                    <span className="daypart-time">{hm(d.time)}</span>
                   </div>
-                )}
+                  {items.length > 0 && <div className="daytl">{items.map(renderBlock)}</div>}
+                </div>
+              );
+            })}
 
-                {untimed.length > 0 && (
-                  <>
-                    {timed.length > 0 && (
-                      <div className="sheet-divider">
-                        <span>Sin hora</span>
-                      </div>
-                    )}
-                    <div className="list">{untimed.map((t) => renderCard(t))}</div>
-                  </>
-                )}
+            {untimed.length > 0 && (
+              <>
+                <div className="sheet-divider">
+                  <span>Sin hora</span>
+                </div>
+                <div className="list">{untimed.map((t) => renderCard(t))}</div>
               </>
             )}
-            <p className="hint">Toca una tarea para ponerle hora de inicio y duración.</p>
+
+            <p className="hint">
+              Las anclas marcan tu mañana, mediodía y noche. Toca una tarea para darle hora y
+              acomodarla en el día.
+            </p>
           </section>
         );
       })()}
