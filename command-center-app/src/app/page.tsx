@@ -1148,42 +1148,38 @@ export default function Home() {
       )}
 
       {view === "dia" && (() => {
-        // Three anchors structure the day (visual guides, not Notion tasks).
-        // Their times are editable per day; section windows derive from them.
-        const DAYPARTS = [
-          { key: "am" as const, ico: "☀", label: "Rutina matutina", time: guides.am, from: "00:00", to: guides.noon },
-          { key: "noon" as const, ico: "✦", label: "Almuerzo", time: guides.noon, from: guides.noon, to: guides.pm },
-          { key: "pm" as const, ico: "☾", label: "Rutina de noche", time: guides.pm, from: guides.pm, to: "24:99" },
+        const toMin = (hhmm: string) => +hhmm.slice(0, 2) * 60 + +hhmm.slice(3, 5);
+        // Anchors are editable visual guides (not Notion tasks); they take a
+        // place in the timeline at their own time, interleaved with tasks.
+        const anchorDefs = [
+          { key: "am" as const, ico: "☀", label: "Rutina matutina", time: guides.am },
+          { key: "noon" as const, ico: "✦", label: "Almuerzo", time: guides.noon },
+          { key: "pm" as const, ico: "☾", label: "Rutina de noche", time: guides.pm },
         ];
-        const timed = data.tasks
-          .filter((t) => hasTime(t.date))
-          .sort((a, b) => (a.date ?? "").localeCompare(b.date ?? ""));
         const untimed = data.tasks.filter((t) => !hasTime(t.date));
-        const partKey = (t: Task) => {
-          const h = timeHHMM_ET(t.date!);
-          return (DAYPARTS.find((d) => h >= d.from && h < d.to) ?? DAYPARTS[0]).key;
-        };
-        const renderBlock = (t: Task) => {
-          const start = clockES(t.date ?? "");
-          const end = t.estMin ? clockPlusES(t.date ?? "", t.estMin) : "";
-          return (
-            <div
-              key={t.id}
-              className={`dayblock ${t.status === "Done" ? "done" : ""}`}
-              onClick={() => openTaskSheet(t)}
-            >
-              <div className="dayblock-time">
-                {start}
-                {end && <span className="dayblock-end">{end}</span>}
-              </div>
-              <div className="dayblock-body">
-                <i className="dot" style={{ background: statusColor(t.status) }} />
-                <span className="dayblock-title">{t.title}</span>
-                {t.estMin ? <span className="agenda-time">{fmtMin(t.estMin)}</span> : null}
-              </div>
-            </div>
-          );
-        };
+
+        type Ev =
+          | { kind: "anchor"; id: string; ico: string; label: string; akey: "am" | "noon" | "pm"; min: number; time: string }
+          | { kind: "task"; id: string; t: Task; min: number; endMin: number };
+        const events: Ev[] = [
+          ...anchorDefs.map((a) => ({
+            kind: "anchor" as const, id: "anchor-" + a.key, ico: a.ico, label: a.label,
+            akey: a.key, time: a.time, min: toMin(a.time),
+          })),
+          ...data.tasks.filter((t) => hasTime(t.date)).map((t) => {
+            const min = toMin(timeHHMM_ET(t.date!));
+            return { kind: "task" as const, id: t.id, t, min, endMin: min + (t.estMin ?? 0) };
+          }),
+        ];
+        // Everything in order by time; on a tie the anchor leads.
+        events.sort((a, b) => a.min - b.min || (a.kind === "anchor" ? -1 : 1));
+        // A task "se solapa" when its duration runs past the next event's start.
+        const overlaps = new Set<string>();
+        events.forEach((e, i) => {
+          const next = events[i + 1];
+          if (e.kind === "task" && e.t.estMin && next && e.endMin > next.min) overlaps.add(e.id);
+        });
+
         return (
           <section className="section" style={{ marginTop: 22 }}>
             <div className="section-head">
@@ -1193,27 +1189,51 @@ export default function Home() {
               </span>
             </div>
 
-            {DAYPARTS.map((d) => {
-              const items = timed.filter((t) => partKey(t) === d.key);
-              return (
-                <div key={d.key}>
-                  <div className="daypart">
+            <div className="dayflow">
+              {events.map((e) =>
+                e.kind === "anchor" ? (
+                  <div className="daypart" key={e.id}>
                     <span className="daypart-name">
-                      <span className="daypart-ico">{d.ico}</span>
-                      {d.label}
+                      <span className="daypart-ico">{e.ico}</span>
+                      {e.label}
                     </span>
                     <input
                       type="time"
                       className="daypart-time"
-                      value={d.time}
-                      onChange={(e) => setGuide(d.key, e.target.value)}
-                      aria-label={`Hora de ${d.label}`}
+                      value={e.time}
+                      onChange={(ev) => setGuide(e.akey, ev.target.value)}
+                      aria-label={`Hora de ${e.label}`}
                     />
                   </div>
-                  {items.length > 0 && <div className="daytl">{items.map(renderBlock)}</div>}
-                </div>
-              );
-            })}
+                ) : (
+                  (() => {
+                    const t = e.t;
+                    const start = clockES(t.date ?? "");
+                    const end = t.estMin ? clockPlusES(t.date ?? "", t.estMin) : "";
+                    return (
+                      <div
+                        key={e.id}
+                        className={`dayblock ${t.status === "Done" ? "done" : ""} ${
+                          overlaps.has(e.id) ? "overlap" : ""
+                        }`}
+                        onClick={() => openTaskSheet(t)}
+                      >
+                        <div className="dayblock-time">
+                          {start}
+                          {end && <span className="dayblock-end">{end}</span>}
+                        </div>
+                        <div className="dayblock-body">
+                          <i className="dot" style={{ background: statusColor(t.status) }} />
+                          <span className="dayblock-title">{t.title}</span>
+                          {t.estMin ? <span className="agenda-time">{fmtMin(t.estMin)}</span> : null}
+                          {overlaps.has(e.id) && <span className="overlap-tag">se solapa</span>}
+                        </div>
+                      </div>
+                    );
+                  })()
+                )
+              )}
+            </div>
 
             {untimed.length > 0 && (
               <>
@@ -1225,8 +1245,8 @@ export default function Home() {
             )}
 
             <p className="hint">
-              Las anclas marcan tu mañana, mediodía y noche. Toca una tarea para darle hora y
-              acomodarla en el día.
+              Todo va en orden por hora; las anclas se mueven contigo. La duración marca cuándo
+              una tarea se solapa con lo siguiente.
             </p>
           </section>
         );

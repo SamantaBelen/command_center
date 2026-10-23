@@ -618,11 +618,16 @@ textarea,
 }
 
 /* ---------- day planner (Día) ---------- */
+.dayflow {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
 .daypart {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin: 20px 0 10px;
+  margin: 8px 0 0;
   padding: 10px 15px;
   background: linear-gradient(90deg, var(--card) 0%, var(--card-2) 100%);
   border: 1px solid var(--line);
@@ -681,6 +686,20 @@ textarea,
 .dayblock.done {
   background: var(--gold-tint);
   border-color: var(--gold-soft);
+}
+.dayblock.overlap {
+  box-shadow: inset 2.5px 0 0 var(--burgundy-soft);
+}
+.overlap-tag {
+  flex: 0 0 auto;
+  font-size: 10.5px;
+  color: var(--burgundy);
+  background: rgba(110, 43, 58, 0.08);
+  border: 1px solid rgba(110, 43, 58, 0.28);
+  border-radius: 999px;
+  padding: 1px 8px;
+  margin-left: 2px;
+  white-space: nowrap;
 }
 .dayblock-time {
   flex: 0 0 auto;
