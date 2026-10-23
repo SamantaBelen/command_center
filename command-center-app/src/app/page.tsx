@@ -293,6 +293,9 @@ function fmtMin(total: number): string {
   if (h) return `${h}h`;
   return `${m}m`;
 }
+// Default guide times for the Día dayparts; overridable per day (on-device).
+const DEFAULT_GUIDES = { am: "07:00", noon: "13:00", pm: "21:00" };
+
 export default function Home() {
   const [data, setData] = useState<Data | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -323,6 +326,29 @@ export default function Home() {
   const [planData, setPlanData] = useState<PlanData | null>(null);
   const [planLoading, setPlanLoading] = useState(false);
   const [planWeek, setPlanWeek] = useState<"this" | "next">("this");
+
+  // Per-day guide times for the Día dayparts (visual anchors, stored on-device).
+  const [guides, setGuides] = useState(DEFAULT_GUIDES);
+  useEffect(() => {
+    const d = data?.date;
+    if (!d) return;
+    try {
+      const raw = localStorage.getItem("cc_guides_" + d);
+      setGuides(raw ? { ...DEFAULT_GUIDES, ...JSON.parse(raw) } : DEFAULT_GUIDES);
+    } catch {
+      setGuides(DEFAULT_GUIDES);
+    }
+  }, [data?.date]);
+  function setGuide(k: "am" | "noon" | "pm", v: string) {
+    if (!v) return;
+    setGuides((prev) => {
+      const next = { ...prev, [k]: v };
+      try {
+        if (data?.date) localStorage.setItem("cc_guides_" + data.date, JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  }
 
   const sheetOpenedAt = useRef(0);
 
@@ -1122,12 +1148,12 @@ export default function Home() {
       )}
 
       {view === "dia" && (() => {
-        const hm = (s: string) => s.replace(/^0/, "");
-        // Three fixed anchors structure the day (visual guides, not Notion tasks).
+        // Three anchors structure the day (visual guides, not Notion tasks).
+        // Their times are editable per day; section windows derive from them.
         const DAYPARTS = [
-          { key: "am", ico: "☀", label: "Rutina matutina", time: "07:00", from: "00:00", to: "13:00" },
-          { key: "noon", ico: "✦", label: "Almuerzo", time: "13:00", from: "13:00", to: "21:00" },
-          { key: "pm", ico: "☾", label: "Rutina de noche", time: "21:00", from: "21:00", to: "24:99" },
+          { key: "am" as const, ico: "☀", label: "Rutina matutina", time: guides.am, from: "00:00", to: guides.noon },
+          { key: "noon" as const, ico: "✦", label: "Almuerzo", time: guides.noon, from: guides.noon, to: guides.pm },
+          { key: "pm" as const, ico: "☾", label: "Rutina de noche", time: guides.pm, from: guides.pm, to: "24:99" },
         ];
         const timed = data.tasks
           .filter((t) => hasTime(t.date))
@@ -1176,7 +1202,13 @@ export default function Home() {
                       <span className="daypart-ico">{d.ico}</span>
                       {d.label}
                     </span>
-                    <span className="daypart-time">{hm(d.time)}</span>
+                    <input
+                      type="time"
+                      className="daypart-time"
+                      value={d.time}
+                      onChange={(e) => setGuide(d.key, e.target.value)}
+                      aria-label={`Hora de ${d.label}`}
+                    />
                   </div>
                   {items.length > 0 && <div className="daytl">{items.map(renderBlock)}</div>}
                 </div>

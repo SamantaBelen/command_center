@@ -644,9 +644,20 @@ textarea,
   opacity: 0.9;
 }
 .daypart-time {
-  font-size: 12px;
-  color: var(--muted);
+  font-size: 12.5px;
+  color: var(--burgundy-soft);
   font-variant-numeric: tabular-nums;
+  font-family: inherit;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  border-radius: 999px;
+  padding: 3px 11px;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.daypart-time::-webkit-calendar-picker-indicator {
+  opacity: 0.4;
+  margin-left: 3px;
 }
 .daytl {
   display: flex;
