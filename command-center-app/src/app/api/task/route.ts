@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { setTaskStatus, createTask, getTaskDetail, setTaskPlan, deleteTask, setTaskFields } from "@/lib/notion";
+import { setTaskStatus, createTask, getTaskDetail, setTaskPlan, deleteTask, setTaskFields, setTaskTime } from "@/lib/notion";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -51,6 +51,15 @@ export async function POST(req: Request) {
     }
 
     if (typeof body?.id === "string" && body.id) {
+      // Set / clear a start time for the day.
+      if ("startTime" in body && typeof body?.day === "string" && DATE_RE.test(body.day)) {
+        const hhmm =
+          typeof body.startTime === "string" && /^\d{2}:\d{2}$/.test(body.startTime)
+            ? body.startTime
+            : null;
+        await setTaskTime(body.id, body.day, hhmm);
+        return NextResponse.json({ ok: true });
+      }
       // Set scoring/analysis fields.
       if (body?.fields && typeof body.fields === "object") {
         await setTaskFields(body.id, body.fields);

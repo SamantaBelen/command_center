@@ -22,6 +22,28 @@ export function suggestPriority(t: ScoreInput): "High" | "Medium" | "Low" | null
   return "Medium";
 }
 
+// America/New_York UTC offset (e.g. "-04:00") for a given day (YYYY-MM-DD).
+export function etOffset(dayISO: string): string {
+  const d = new Date(`${dayISO}T12:00:00Z`);
+  const name =
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/New_York",
+      timeZoneName: "shortOffset",
+    })
+      .formatToParts(d)
+      .find((p) => p.type === "timeZoneName")?.value ?? "GMT-5";
+  const m = name.match(/GMT([+-]\d{1,2})(?::(\d{2}))?/);
+  const h = m ? parseInt(m[1], 10) : -5;
+  const mm = m && m[2] ? parseInt(m[2], 10) : 0;
+  const sign = h < 0 ? "-" : "+";
+  return `${sign}${String(Math.abs(h)).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+}
+
+// Build an ISO datetime for HH:MM on a day, anchored to Eastern time.
+export function buildETDateTime(dayISO: string, hhmm: string): string {
+  return `${dayISO}T${hhmm}:00${etOffset(dayISO)}`;
+}
+
 // Mon–Sun ISO bounds for the week containing the given day (YYYY-MM-DD).
 export function weekBounds(todayISO: string): {
   start: string;

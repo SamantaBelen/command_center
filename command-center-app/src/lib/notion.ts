@@ -1,4 +1,5 @@
 import { Client } from "@notionhq/client";
+import { buildETDateTime } from "./planning";
 
 const notion = new Client({ auth: process.env.NOTION_TOKEN });
 
@@ -374,6 +375,19 @@ export async function setTaskFields(id: string, fields: TaskFields): Promise<voi
   if ("impact" in fields) properties.Impact = { number: fields.impact ?? null };
   if ("effort" in fields) properties.Effort = { number: fields.effort ?? null };
   await notion.pages.update({ page_id: id, properties });
+}
+
+// Set (or clear) a start time on a task for a given day. hhmm null → date only.
+export async function setTaskTime(
+  id: string,
+  dayISO: string,
+  hhmm: string | null
+): Promise<void> {
+  const start = hhmm ? buildETDateTime(dayISO, hhmm) : dayISO;
+  await notion.pages.update({
+    page_id: id,
+    properties: { Date: { date: { start } } },
+  });
 }
 
 // Set the planning bucket. dateArg: null clears the Date, a string sets it,
