@@ -35,6 +35,19 @@ type Habit = {
   cadence: string | null;
   order: number | null;
 };
+type HabitDef = {
+  id: string;
+  name: string;
+  active: boolean;
+  cadence: string | null;
+  target: number | null;
+  order: number | null;
+  timeOfDay: string | null;
+  estMin: number | null;
+  lastDone: string | null;
+  timesDone: number | null;
+  constancia: number | null;
+};
 type Data = { today: string; date: string; tasks: Task[]; habits: Habit[] };
 type TaskDetailData = {
   id: string;
@@ -105,10 +118,17 @@ const CADENCE_ES: Record<string, string> = {
   daily: "Diario",
   weekly: "Semanal",
   monthly: "Mensual",
+  bimonthly: "Bimensual",
   yearly: "Anual",
 };
 const cadenceES = (c: string | null) =>
   c ? CADENCE_ES[c.toLowerCase()] ?? c : "";
+
+const TOD_ES: Record<string, { label: string; ico: string }> = {
+  morning: { label: "Mañana", ico: "☀" },
+  afternoon: { label: "Tarde", ico: "✦" },
+  night: { label: "Noche", ico: "☾" },
+};
 
 /* ---------- small icons ---------- */
 function CheckMark() {
@@ -320,7 +340,12 @@ export default function Home() {
   const [taskDetail, setTaskDetail] = useState<TaskDetailData | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  const [view, setView] = useState<"hoy" | "semana" | "planear" | "dia">("hoy");
+  const [view, setView] = useState<
+    "hoy" | "semana" | "planear" | "dia" | "perfil"
+  >("hoy");
+  const [profileHabits, setProfileHabits] = useState<HabitDef[] | null>(null);
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [showInactive, setShowInactive] = useState(false);
   const [weekTasks, setWeekTasks] = useState<Task[] | null>(null);
   const [weekLoading, setWeekLoading] = useState(false);
   const [planData, setPlanData] = useState<PlanData | null>(null);
@@ -607,6 +632,20 @@ export default function Home() {
     setSheet("soon");
   }
 
+  async function loadHabits() {
+    setProfileLoading(true);
+    try {
+      const res = await fetch("/api/habits", { cache: "no-store" });
+      if (!res.ok) throw new Error();
+      const json = await res.json();
+      setProfileHabits(json.habits ?? []);
+    } catch {
+      setError("No se pudieron cargar los hábitos");
+    } finally {
+      setProfileLoading(false);
+    }
+  }
+
   function onNav(tab: string) {
     if (tab === "hoy") {
       setView("hoy");
@@ -624,7 +663,8 @@ export default function Home() {
       setView("semana");
       loadWeek();
     } else {
-      openSoon("Perfil");
+      setView("perfil");
+      loadHabits();
     }
   }
 
@@ -1252,12 +1292,110 @@ export default function Home() {
         );
       })()}
 
+      {view === "perfil" && (() => {
+        const all = profileHabits ?? [];
+        const active = all.filter((h) => h.active);
+        const inactive = all.filter((h) => !h.active);
+        const fmtDay = (iso: string) =>
+          new Intl.DateTimeFormat("es-ES", {
+            day: "numeric",
+            month: "short",
+            timeZone: "America/New_York",
+          }).format(new Date(iso.length === 10 ? iso + "T12:00:00" : iso));
+        const renderHabit = (h: HabitDef) => {
+          const tod = h.timeOfDay ? TOD_ES[h.timeOfDay] : null;
+          const pct = h.constancia != null ? Math.round(h.constancia * 100) : null;
+          return (
+            <div key={h.id} className={`habit ${h.active ? "" : "habit-off"}`}>
+              <div className="habit-head">
+                <span className="habit-name">{h.name}</span>
+                {pct != null && <span className="habit-pct">{pct}%</span>}
+              </div>
+              <div className="habit-meta">
+                {h.cadence && <span className="hchip">{cadenceES(h.cadence)}</span>}
+                {h.target != null && h.target > 1 && (
+                  <span className="hchip">meta {h.target}×</span>
+                )}
+                {tod && (
+                  <span className="hchip">
+                    {tod.ico} {tod.label}
+                  </span>
+                )}
+                {h.estMin ? <span className="hchip">{fmtMin(h.estMin)}</span> : null}
+              </div>
+              {pct != null && (
+                <div className="habit-bar">
+                  <span style={{ width: pct + "%" }} />
+                </div>
+              )}
+              {(h.timesDone != null || h.lastDone) && (
+                <div className="habit-foot">
+                  {h.timesDone != null && (
+                    <span>
+                      Hecho {h.timesDone} {h.timesDone === 1 ? "vez" : "veces"}
+                    </span>
+                  )}
+                  {h.lastDone && <span>· última: {fmtDay(h.lastDone)}</span>}
+                </div>
+              )}
+            </div>
+          );
+        };
+        return (
+          <section className="section" style={{ marginTop: 22 }}>
+            <div className="section-head">
+              <h2 className="section-title serif">Mis hábitos</h2>
+              <span className="count">
+                {profileLoading && !profileHabits ? "…" : `${active.length} activos`}
+              </span>
+            </div>
+
+            {profileLoading && !profileHabits ? (
+              <div className="empty">Cargando…</div>
+            ) : active.length === 0 ? (
+              <div className="empty">No hay hábitos activos. ✦</div>
+            ) : (
+              <div className="habits-list">{active.map(renderHabit)}</div>
+            )}
+
+            {inactive.length > 0 && (
+              <>
+                <button
+                  className="inactive-toggle"
+                  onClick={() => setShowInactive((v) => !v)}
+                >
+                  <span>
+                    {showInactive ? "Ocultar" : "Ver"} inactivos ({inactive.length})
+                  </span>
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className={`chev ${showInactive ? "open" : ""}`}
+                  >
+                    <path d="M6 9l6 6 6-6" />
+                  </svg>
+                </button>
+                {showInactive && (
+                  <div className="habits-list">{inactive.map(renderHabit)}</div>
+                )}
+              </>
+            )}
+          </section>
+        );
+      })()}
+
       {/* add task */}
-      <button className="fab" aria-label="Añadir tarea" onClick={() => setSheet("add")}>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
-          <path d="M12 5v14M5 12h14" />
-        </svg>
-      </button>
+      {view !== "perfil" && (
+        <button className="fab" aria-label="Añadir tarea" onClick={() => setSheet("add")}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+            <path d="M12 5v14M5 12h14" />
+          </svg>
+        </button>
+      )}
 
       <BottomNav view={view} onNav={onNav} />
 
@@ -1631,7 +1769,10 @@ function BottomNav({
           </svg>
           Pendientes
         </button>
-        <button className="tab" onClick={() => onNav("perfil")}>
+        <button
+          className={`tab ${view === "perfil" ? "active" : ""}`}
+          onClick={() => onNav("perfil")}
+        >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" {...sw}>
             <circle cx="12" cy="8" r="3.5" />
             <path d="M5 20c0-3.6 3.1-6 7-6s7 2.4 7 6" />
