@@ -324,6 +324,7 @@ export default function Home() {
     | null
     | "habits"
     | "add"
+    | "addhabit"
     | "soon"
     | "task"
     | "plan"
@@ -346,6 +347,13 @@ export default function Home() {
   const [profileHabits, setProfileHabits] = useState<HabitDef[] | null>(null);
   const [profileLoading, setProfileLoading] = useState(false);
   const [showInactive, setShowInactive] = useState(false);
+  // New-habit form.
+  const [nhName, setNhName] = useState("");
+  const [nhCadence, setNhCadence] = useState("Daily");
+  const [nhTarget, setNhTarget] = useState(1);
+  const [nhTod, setNhTod] = useState<string | null>(null);
+  const [nhEst, setNhEst] = useState<number | null>(null);
+  const [addingHabit, setAddingHabit] = useState(false);
   const [weekTasks, setWeekTasks] = useState<Task[] | null>(null);
   const [weekLoading, setWeekLoading] = useState(false);
   const [planData, setPlanData] = useState<PlanData | null>(null);
@@ -663,6 +671,51 @@ export default function Home() {
     } catch {
       setError("No se pudo actualizar el hábito");
       flip(h.active);
+    }
+  }
+
+  function openAddHabit() {
+    setNhName("");
+    setNhCadence("Daily");
+    setNhTarget(1);
+    setNhTod(null);
+    setNhEst(null);
+    setSheet("addhabit");
+  }
+
+  async function addHabit(e: React.FormEvent) {
+    e.preventDefault();
+    const name = nhName.trim();
+    if (!name || addingHabit) return;
+    setAddingHabit(true);
+    try {
+      // Append after the last habit of the same cadence.
+      const sameCad = (profileHabits ?? []).filter((h) => h.cadence === nhCadence);
+      const maxOrder = sameCad.reduce((m, h) => Math.max(m, h.order ?? 0), 0);
+      const res = await fetch("/api/habits", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name,
+          cadence: nhCadence,
+          target: nhTarget,
+          timeOfDay: nhTod,
+          estMin: nhEst,
+          order: maxOrder + 1,
+        }),
+      });
+      if (!res.ok) throw new Error();
+      const payload = await res.json();
+      if (payload.habit) {
+        setProfileHabits((list) => (list ? [...list, payload.habit] : [payload.habit]));
+      } else {
+        loadHabits();
+      }
+      setSheet(null);
+    } catch {
+      setError("No se pudo crear el hábito");
+    } finally {
+      setAddingHabit(false);
     }
   }
 
@@ -1467,14 +1520,16 @@ export default function Home() {
         );
       })()}
 
-      {/* add task */}
-      {view !== "perfil" && (
-        <button className="fab" aria-label="Añadir tarea" onClick={() => setSheet("add")}>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
-            <path d="M12 5v14M5 12h14" />
-          </svg>
-        </button>
-      )}
+      {/* add task / add habit */}
+      <button
+        className="fab"
+        aria-label={view === "perfil" ? "Añadir hábito" : "Añadir tarea"}
+        onClick={() => (view === "perfil" ? openAddHabit() : setSheet("add"))}
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+          <path d="M12 5v14M5 12h14" />
+        </svg>
+      </button>
 
       <BottomNav view={view} onNav={onNav} />
 
@@ -1533,6 +1588,92 @@ export default function Home() {
                   />
                   <button className="btn" type="submit" disabled={adding || !newTask.trim()}>
                     {adding ? "Guardando…" : "Añadir tarea"}
+                  </button>
+                </form>
+              </>
+            )}
+            {sheet === "addhabit" && (
+              <>
+                <h3 className="sheet-title serif">Nuevo hábito</h3>
+                <p className="sheet-sub">Se agrega a tu base de hábitos en Notion (activo).</p>
+                <form className="sheet-form" onSubmit={addHabit}>
+                  <input
+                    autoFocus
+                    placeholder="¿Qué hábito quieres construir?"
+                    value={nhName}
+                    onChange={(e) => setNhName(e.target.value)}
+                  />
+
+                  <div className="q">
+                    <div className="q-label">Cadencia</div>
+                    <div className="chips">
+                      {["Daily", "Weekly", "Monthly", "Bimonthly", "Yearly"].map((c) => (
+                        <button
+                          type="button"
+                          key={c}
+                          className={`chip ${nhCadence === c ? "chip-on" : ""}`}
+                          onClick={() => setNhCadence(c)}
+                        >
+                          {cadenceES(c)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="q">
+                    <div className="q-label">Meta (veces por periodo)</div>
+                    <div className="chips">
+                      {[1, 2, 3, 4, 5, 6, 7].map((n) => (
+                        <button
+                          type="button"
+                          key={n}
+                          className={`chip chip-num ${nhTarget === n ? "chip-on" : ""}`}
+                          onClick={() => setNhTarget(n)}
+                        >
+                          {n}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="q">
+                    <div className="q-label">Momento del día (opcional)</div>
+                    <div className="chips">
+                      {(["morning", "afternoon", "night"] as const).map((t) => (
+                        <button
+                          type="button"
+                          key={t}
+                          className={`chip ${nhTod === t ? "chip-on" : ""}`}
+                          onClick={() => setNhTod(nhTod === t ? null : t)}
+                        >
+                          {TOD_ES[t].ico} {TOD_ES[t].label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="q">
+                    <div className="q-label">Tiempo estimado (opcional)</div>
+                    <div className="chips">
+                      {TIME_OPTS.map((o) => (
+                        <button
+                          type="button"
+                          key={o.v}
+                          className={`chip ${nhEst === o.v ? "chip-on" : ""}`}
+                          onClick={() => setNhEst(nhEst === o.v ? null : o.v)}
+                        >
+                          {o.l}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <button
+                    className="btn"
+                    type="submit"
+                    disabled={addingHabit || !nhName.trim()}
+                  >
+                    {addingHabit ? "Guardando…" : "Añadir hábito"}
                   </button>
                 </form>
               </>
