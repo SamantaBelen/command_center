@@ -1131,6 +1131,8 @@ export default function Home() {
           <div className="section-head">
             <h2 className="section-title serif plan-title">Planea tu semana</h2>
           </div>
+          <div className="plan-cols">
+          <div className="plan-seg">
           <div className="seg">
             <button
               className={planWeek === "this" ? "seg-on" : ""}
@@ -1153,8 +1155,9 @@ export default function Home() {
               La próxima semana
             </button>
           </div>
+          </div>
           {planLoading && !planData ? (
-            <div className="loading">Cargando…</div>
+            <div className="plan-loading">Cargando…</div>
           ) : planData ? (
             (() => {
               const stats = planData.weekDays.map((iso) => {
@@ -1187,7 +1190,6 @@ export default function Home() {
               const selIdx = planData.weekDays.indexOf(sel);
               return (
                 <>
-                  <div className="plan-cols">
                   <div className="plan-balance">
                   <div className="balance">
                     {stats.map((s) => {
@@ -1357,11 +1359,11 @@ export default function Home() {
                     })}
                   </div>
                   </div>
-                  </div>
                 </>
               );
             })()
           ) : null}
+          </div>
         </section>
       )}
 

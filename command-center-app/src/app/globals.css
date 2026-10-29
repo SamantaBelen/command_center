@@ -1547,11 +1547,18 @@ textarea,
     display: grid;
     grid-template-columns: minmax(210px, 250px) 1fr;
     grid-template-areas:
+      ".    seg"
       "pool balance"
       "pool agenda";
     column-gap: 24px;
     row-gap: 12px;
     align-items: start;
+  }
+  .plan-seg {
+    grid-area: seg;
+  }
+  .plan-seg .seg {
+    margin: 0;
   }
   .plan-pool {
     grid-area: pool;
@@ -1561,6 +1568,9 @@ textarea,
   }
   .plan-agenda {
     grid-area: agenda;
+  }
+  .plan-loading {
+    grid-column: 1 / -1;
   }
   /* balance shares the agenda's 7-column grid so days line up vertically */
   .plan-balance .balance {
