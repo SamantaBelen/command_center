@@ -400,6 +400,9 @@ export default function Home() {
   const [planWeek, setPlanWeek] = useState<"this" | "next">("this");
   // Focused day in the weekly agenda (Semana); null = default to today/first.
   const [selDay, setSelDay] = useState<string | null>(null);
+  // Drag & drop: a pool card being dragged, and the day it's hovering over.
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [dragOverDay, setDragOverDay] = useState<string | null>(null);
 
   // Per-day guide times for the Día dayparts (visual anchors, stored on-device).
   const [guides, setGuides] = useState(DEFAULT_GUIDES);
@@ -1189,9 +1192,30 @@ export default function Home() {
                         {sortedPool.length === 0 ? (
                           <div className="empty">¡Semana repartida! ✦</div>
                         ) : (
-                          <div className="list">{sortedPool.map((t) => renderCard(t))}</div>
+                          <div className="list">
+                            {sortedPool.map((t) => (
+                              <div
+                                key={t.id}
+                                className={`pool-drag ${dragId === t.id ? "dragging" : ""}`}
+                                draggable
+                                onDragStart={(e) => {
+                                  e.dataTransfer.setData("text/plain", t.id);
+                                  e.dataTransfer.effectAllowed = "move";
+                                  setDragId(t.id);
+                                }}
+                                onDragEnd={() => {
+                                  setDragId(null);
+                                  setDragOverDay(null);
+                                }}
+                              >
+                                {renderCard(t)}
+                              </div>
+                            ))}
+                          </div>
                         )}
-                        <p className="hint">Toca una tarea para puntuarla y agendarla.</p>
+                        <p className="hint">
+                          Arrastra una tarea a un día para agendarla, o tócala para puntuarla.
+                        </p>
                       </>
                     );
                   })()}
@@ -1313,7 +1337,24 @@ export default function Home() {
                           key={iso}
                           className={`agenda-day ${isToday ? "agenda-now" : ""} ${
                             isSel ? "agenda-sel" : ""
-                          }`}
+                          } ${dragOverDay === iso ? "drag-over" : ""}`}
+                          onDragOver={(e) => {
+                            if (!dragId) return;
+                            e.preventDefault();
+                            e.dataTransfer.dropEffect = "move";
+                            if (dragOverDay !== iso) setDragOverDay(iso);
+                          }}
+                          onDragLeave={() =>
+                            setDragOverDay((d) => (d === iso ? null : d))
+                          }
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            const id = e.dataTransfer.getData("text/plain");
+                            const task = planData.pool.find((x) => x.id === id);
+                            setDragId(null);
+                            setDragOverDay(null);
+                            if (task) assignTaskToDay(task, iso);
+                          }}
                         >
                           <div className="agenda-head" onClick={() => setSelDay(iso)}>
                             <span className="agenda-dow">{shortDayES(iso)}</span>
