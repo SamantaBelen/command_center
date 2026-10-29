@@ -760,6 +760,9 @@ textarea,
 }
 
 /* ---------- weekly agenda (Planear) ---------- */
+.plan-agenda-title {
+  margin-top: 28px;
+}
 .agenda {
   display: flex;
   flex-direction: column;
@@ -1457,5 +1460,78 @@ textarea,
   .fab {
     right: max(calc((100vw - var(--side-w) - 820px) / 2 + 24px), 24px);
     bottom: 32px;
+  }
+
+  /* Semana (planear): widen and split into pool + weekly agenda */
+  .plan-section {
+    --pw: min(1140px, calc(100vw - var(--side-w) - 64px));
+    position: relative;
+    left: 50%;
+    width: var(--pw);
+    margin-left: calc(var(--pw) / -2);
+  }
+  .plan-cols {
+    display: grid;
+    grid-template-columns: minmax(250px, 300px) 1fr;
+    gap: 24px;
+    align-items: start;
+  }
+  .plan-pool .section-head {
+    margin-top: 0 !important;
+  }
+  .plan-agenda-title {
+    margin-top: 0;
+  }
+  /* weekly agenda as 7 day-columns, tasks under each day */
+  .plan-agenda .agenda {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 8px;
+    align-items: start;
+  }
+  .plan-agenda .agenda-day {
+    border-left: none;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--card-2);
+    padding: 10px 8px;
+    margin-left: 0;
+  }
+  .plan-agenda .agenda-now {
+    border-color: var(--burgundy-soft);
+    background: var(--card);
+  }
+  .plan-agenda .agenda-head {
+    flex-wrap: wrap;
+    gap: 3px 6px;
+    margin-bottom: 8px;
+  }
+  .plan-agenda .agenda-dow {
+    font-size: 12.5px;
+  }
+  .plan-agenda .agenda-n {
+    font-size: 11px;
+  }
+  .plan-agenda .agenda-item {
+    align-items: flex-start;
+    gap: 6px;
+    padding: 5px 7px;
+    border-radius: 9px;
+  }
+  /* drop the inline dot to free width in the narrow day columns */
+  .plan-agenda .agenda-item .dot {
+    display: none;
+  }
+  .plan-agenda .agenda-title {
+    font-size: 12px;
+    line-height: 1.25;
+    overflow-wrap: break-word;
+  }
+  .plan-agenda .agenda-time {
+    display: none;
+  }
+  .plan-agenda .agenda-empty {
+    font-size: 12px;
+    padding: 2px 0;
   }
 }
