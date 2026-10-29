@@ -246,6 +246,14 @@ export async function getAllHabits(): Promise<HabitDef[]> {
   return habits;
 }
 
+// Flip a habit's Active checkbox (used from the Perfil view).
+export async function setHabitActive(id: string, active: boolean): Promise<void> {
+  await notion.pages.update({
+    page_id: id,
+    properties: { Active: { checkbox: active } },
+  });
+}
+
 export type TaskDetailField = { label: string; value: string };
 export type TaskDetail = {
   id: string;
