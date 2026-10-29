@@ -1519,6 +1519,13 @@ textarea,
     margin: 0 auto;
     padding: 36px 40px calc(var(--nav-h) + env(safe-area-inset-bottom) + 40px);
   }
+  /* The Semana view uses the full width, left-aligned (header included),
+     so the greeting, title, pool and agenda share the same left edge. */
+  .wrap:has(.plan-section) {
+    max-width: 1280px;
+    padding-left: 56px;
+    padding-right: 56px;
+  }
   /* keep the bottom tabs as a centered group, not stretched edge-to-edge */
   .nav-inner {
     max-width: 640px;
@@ -1531,15 +1538,11 @@ textarea,
     right: max(calc((100vw - 820px) / 2 + 24px), 24px);
     bottom: calc(var(--nav-h) + env(safe-area-inset-bottom) + 20px);
   }
-
-  /* Semana (planear): widen and split into pool + weekly agenda */
-  .plan-section {
-    --pw: min(1140px, calc(100vw - var(--side-w) - 64px));
-    position: relative;
-    left: 50%;
-    width: var(--pw);
-    margin-left: calc(var(--pw) / -2);
+  body:has(.plan-section) .fab {
+    right: max(calc((100vw - 1280px) / 2 + 48px), 40px);
   }
+
+  /* Semana (planear): split into pool + weekly agenda */
   .plan-cols {
     display: grid;
     grid-template-columns: minmax(210px, 250px) 1fr;
