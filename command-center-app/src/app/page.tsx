@@ -646,6 +646,26 @@ export default function Home() {
     }
   }
 
+  async function toggleHabitActive(h: HabitDef) {
+    const next = !h.active;
+    const flip = (a: boolean) =>
+      setProfileHabits((list) =>
+        list ? list.map((x) => (x.id === h.id ? { ...x, active: a } : x)) : list
+      );
+    flip(next);
+    try {
+      const res = await fetch("/api/habits", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: h.id, active: next }),
+      });
+      if (!res.ok) throw new Error();
+    } catch {
+      setError("No se pudo actualizar el hábito");
+      flip(h.active);
+    }
+  }
+
   function onNav(tab: string) {
     if (tab === "hoy") {
       setView("hoy");
@@ -1302,6 +1322,34 @@ export default function Home() {
             month: "short",
             timeZone: "America/New_York",
           }).format(new Date(iso.length === 10 ? iso + "T12:00:00" : iso));
+
+        // Summary: average constancia + totals across active habits.
+        const withC = active.filter((h) => h.constancia != null);
+        const avg = withC.length
+          ? Math.round((withC.reduce((s, h) => s + (h.constancia ?? 0), 0) / withC.length) * 100)
+          : null;
+        const totalDone = active.reduce((s, h) => s + (h.timesDone ?? 0), 0);
+
+        // Group a list by cadence, in a fixed order.
+        const CAD_SEQ = ["Daily", "Weekly", "Monthly", "Bimonthly", "Yearly"];
+        const CAD_PLURAL: Record<string, string> = {
+          Daily: "Diarios",
+          Weekly: "Semanales",
+          Monthly: "Mensuales",
+          Bimonthly: "Bimensuales",
+          Yearly: "Anuales",
+        };
+        const groupByCadence = (list: HabitDef[]) => {
+          const groups = CAD_SEQ.map((c) => ({
+            key: c,
+            label: CAD_PLURAL[c] ?? c,
+            items: list.filter((h) => h.cadence === c),
+          })).filter((g) => g.items.length);
+          const rest = list.filter((h) => !CAD_SEQ.includes(h.cadence ?? ""));
+          if (rest.length) groups.push({ key: "otros", label: "Otros", items: rest });
+          return groups;
+        };
+
         const renderHabit = (h: HabitDef) => {
           const tod = h.timeOfDay ? TOD_ES[h.timeOfDay] : null;
           const pct = h.constancia != null ? Math.round(h.constancia * 100) : null;
@@ -1309,7 +1357,16 @@ export default function Home() {
             <div key={h.id} className={`habit ${h.active ? "" : "habit-off"}`}>
               <div className="habit-head">
                 <span className="habit-name">{h.name}</span>
-                {pct != null && <span className="habit-pct">{pct}%</span>}
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={h.active}
+                  aria-label={h.active ? "Pausar hábito" : "Activar hábito"}
+                  className={`hswitch ${h.active ? "on" : ""}`}
+                  onClick={() => toggleHabitActive(h)}
+                >
+                  <span className="hswitch-knob" />
+                </button>
               </div>
               <div className="habit-meta">
                 {h.cadence && <span className="hchip">{cadenceES(h.cadence)}</span>}
@@ -1324,8 +1381,11 @@ export default function Home() {
                 {h.estMin ? <span className="hchip">{fmtMin(h.estMin)}</span> : null}
               </div>
               {pct != null && (
-                <div className="habit-bar">
-                  <span style={{ width: pct + "%" }} />
+                <div className="habit-barrow">
+                  <div className="habit-bar">
+                    <span style={{ width: pct + "%" }} />
+                  </div>
+                  <span className="habit-pct">{pct}%</span>
                 </div>
               )}
               {(h.timesDone != null || h.lastDone) && (
@@ -1341,6 +1401,7 @@ export default function Home() {
             </div>
           );
         };
+
         return (
           <section className="section" style={{ marginTop: 22 }}>
             <div className="section-head">
@@ -1355,7 +1416,25 @@ export default function Home() {
             ) : active.length === 0 ? (
               <div className="empty">No hay hábitos activos. ✦</div>
             ) : (
-              <div className="habits-list">{active.map(renderHabit)}</div>
+              <>
+                <div className="hsummary">
+                  <div>
+                    <span className="hsummary-pct serif">{avg != null ? `${avg}%` : "—"}</span>
+                    <span className="hsummary-label">Constancia promedio</span>
+                  </div>
+                  <div className="hsummary-sub">
+                    <span>{active.length} activos</span>
+                    <span>{totalDone} check-ins</span>
+                  </div>
+                </div>
+
+                {groupByCadence(active).map((g) => (
+                  <div key={g.key} className="hgroup">
+                    <div className="group-label">{g.label}</div>
+                    <div className="habits-list">{g.items.map(renderHabit)}</div>
+                  </div>
+                ))}
+              </>
             )}
 
             {inactive.length > 0 && (
