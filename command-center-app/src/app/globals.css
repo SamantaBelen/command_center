@@ -1473,14 +1473,34 @@ textarea,
   .plan-cols {
     display: grid;
     grid-template-columns: minmax(250px, 300px) 1fr;
-    gap: 24px;
+    grid-template-areas:
+      "pool balance"
+      "pool agenda";
+    column-gap: 24px;
+    row-gap: 12px;
     align-items: start;
+  }
+  .plan-pool {
+    grid-area: pool;
+  }
+  .plan-balance {
+    grid-area: balance;
+  }
+  .plan-agenda {
+    grid-area: agenda;
+  }
+  /* balance shares the agenda's 7-column grid so days line up vertically */
+  .plan-balance .balance {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 8px;
+    margin: 0;
   }
   .plan-pool .section-head {
     margin-top: 0 !important;
   }
+  /* day labels already sit in the balance row above the columns */
   .plan-agenda-title {
-    margin-top: 0;
+    display: none;
   }
   /* weekly agenda as 7 day-columns, tasks under each day */
   .plan-agenda .agenda {

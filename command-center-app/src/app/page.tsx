@@ -1136,6 +1136,8 @@ export default function Home() {
               const max = Math.max(1, ...stats.map((s) => val(s).pend + val(s).done));
               return (
                 <>
+                  <div className="plan-cols">
+                  <div className="plan-balance">
                   <div className="balance">
                     {stats.map((s) => {
                       const m = val(s);
@@ -1175,8 +1177,8 @@ export default function Home() {
                       );
                     })}
                   </div>
+                  </div>
 
-                  <div className="plan-cols">
                   <div className="plan-pool">
                   {(() => {
                     const prank: Record<string, number> = { High: 0, Medium: 1, Low: 2 };
