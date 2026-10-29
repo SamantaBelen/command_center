@@ -788,6 +788,18 @@ export default function Home() {
   // Assign a task to a specific day: set its date + Planeación "Agendado".
   async function assignTaskToDay(t: Task, dayISO: string) {
     applyPatch(t.id, { date: dayISO, plan: "Agendado" });
+    // Optimistically move a pool task into the week so it lands on the day at once.
+    setPlanData((pd) => {
+      if (!pd) return pd;
+      const inPool = pd.pool.find((x) => x.id === t.id);
+      if (!inPool) return pd;
+      const moved = { ...inPool, date: dayISO, plan: "Agendado" };
+      return {
+        ...pd,
+        pool: pd.pool.filter((x) => x.id !== t.id),
+        week: [...pd.week.filter((x) => x.id !== t.id), moved],
+      };
+    });
     try {
       const res = await fetch("/api/task", {
         method: "POST",
@@ -1320,7 +1332,7 @@ export default function Home() {
                       </button>
                     </div>
                   </div>
-                  <div className="agenda">
+                  <div className={`agenda ${dragId ? "dnd" : ""}`}>
                     {planData.weekDays.map((iso) => {
                       const dayTasks = planData.week
                         .filter((t) => (t.date ?? "").slice(0, 10) === iso)

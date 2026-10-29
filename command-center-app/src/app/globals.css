@@ -1523,6 +1523,11 @@ textarea,
   background: rgba(110, 43, 58, 0.07);
   box-shadow: inset 0 0 0 2px var(--burgundy-soft);
 }
+/* while dragging, children don't catch drag events, so the day's
+   highlight doesn't flicker as the cursor crosses inner elements */
+.agenda.dnd .agenda-day * {
+  pointer-events: none;
+}
 
 /* Semana columns — mobile stacks them: toggle, balance, pool, agenda */
 .plan-cols {
