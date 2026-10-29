@@ -969,7 +969,7 @@ export default function Home() {
   if (error && !data) {
     return (
       <>
-        <Header onProfile={() => openSoon("Perfil")} />
+        <Header onProfile={() => onNav("perfil")} />
         <div className="empty">{error}</div>
         <div className="center">
           <button className="refresh" onClick={() => load()}>
@@ -983,7 +983,7 @@ export default function Home() {
   if (!data) {
     return (
       <>
-        <Header onProfile={() => openSoon("Perfil")} />
+        <Header onProfile={() => onNav("perfil")} />
         <div className="loading">Cargando…</div>
         <BottomNav view={view} onNav={onNav} />
       </>
@@ -1013,7 +1013,7 @@ export default function Home() {
 
   return (
     <>
-      <Header onProfile={() => openSoon("Perfil")} />
+      <Header onProfile={() => onNav("perfil")} />
 
       {view === "hoy" && (
         <>
