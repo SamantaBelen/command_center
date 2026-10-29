@@ -254,6 +254,49 @@ export async function setHabitActive(id: string, active: boolean): Promise<void>
   });
 }
 
+export type CreateHabitOpts = {
+  cadence?: string | null;
+  target?: number | null;
+  timeOfDay?: string | null;
+  estMin?: number | null;
+  order?: number | null;
+};
+
+// Create a new (active) habit in the Habits database.
+export async function createHabit(
+  name: string,
+  opts: CreateHabitOpts = {}
+): Promise<HabitDef> {
+  const properties: any = {
+    Name: { title: [{ text: { content: name } }] },
+    Active: { checkbox: true },
+  };
+  if (opts.cadence) properties["Cadence"] = { select: { name: opts.cadence } };
+  if (opts.target != null) properties["Target"] = { number: opts.target };
+  if (opts.timeOfDay) properties["Time of Day"] = { select: { name: opts.timeOfDay } };
+  if (opts.estMin != null) properties["Tiempo estimado (min)"] = { number: opts.estMin };
+  if (opts.order != null) properties["Order"] = { number: opts.order };
+
+  const page: any = await notion.pages.create({
+    parent: { database_id: HABITS_DB },
+    properties,
+  });
+
+  return {
+    id: page.id,
+    name,
+    active: true,
+    cadence: opts.cadence ?? null,
+    target: opts.target ?? null,
+    order: opts.order ?? null,
+    timeOfDay: opts.timeOfDay ?? null,
+    estMin: opts.estMin ?? null,
+    lastDone: null,
+    timesDone: 0,
+    constancia: 0,
+  };
+}
+
 export type TaskDetailField = { label: string; value: string };
 export type TaskDetail = {
   id: string;
