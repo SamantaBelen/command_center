@@ -1401,65 +1401,28 @@ textarea,
   color: var(--muted-2);
 }
 
-/* ---------- laptop / wide screens: left sidebar layout ---------- */
+/* ---------- laptop / wide screens: wider content, bottom nav kept ---------- */
 @media (min-width: 900px) {
+  /* Nav stays a bottom bar like mobile; content is just wider and centered. */
   :root {
-    --side-w: 236px;
+    --side-w: 0px;
   }
-  body {
-    padding-left: var(--side-w);
+  .wrap {
+    max-width: 820px;
+    margin: 0 auto;
+    padding: 36px 40px calc(var(--nav-h) + env(safe-area-inset-bottom) + 40px);
   }
-  /* bottom bar -> fixed left sidebar */
-  .nav {
-    top: 0;
-    bottom: 0;
-    right: auto;
-    width: var(--side-w);
-    height: 100dvh;
-    padding: 30px 0;
-    flex-direction: column;
-    border-top: none;
-    border-right: 1px solid var(--line);
-    background: rgba(247, 242, 234, 0.7);
-  }
+  /* keep the bottom tabs as a centered group, not stretched edge-to-edge */
   .nav-inner {
-    grid-template-columns: 1fr;
-    grid-auto-rows: min-content;
-    align-content: start;
-    gap: 4px;
-    max-width: none;
-    padding: 0 16px;
-  }
-  .tab {
-    flex-direction: row;
-    justify-content: flex-start;
-    gap: 14px;
-    padding: 12px 16px;
-    font-size: 14px;
-    border-radius: 12px;
-    transition: background 0.15s ease, color 0.15s ease;
-  }
-  .tab svg {
-    width: 20px;
-    height: 20px;
-  }
-  .tab.active {
-    background: var(--card);
-    box-shadow: inset 0 0 0 1px var(--line);
+    max-width: 640px;
   }
   .tab:hover {
     color: var(--burgundy);
   }
-  /* content column centered in the space beside the sidebar */
-  .wrap {
-    max-width: 820px;
-    margin: 0 auto;
-    padding: 36px 56px 72px;
-  }
-  /* FAB hugs the content column (no bottom nav to clear) */
+  /* FAB sits above the bottom nav, aligned to the content column */
   .fab {
-    right: max(calc((100vw - var(--side-w) - 820px) / 2 + 24px), 24px);
-    bottom: 32px;
+    right: max(calc((100vw - 820px) / 2 + 24px), 24px);
+    bottom: calc(var(--nav-h) + env(safe-area-inset-bottom) + 20px);
   }
 
   /* Semana (planear): widen and split into pool + weekly agenda */
@@ -1473,14 +1436,34 @@ textarea,
   .plan-cols {
     display: grid;
     grid-template-columns: minmax(250px, 300px) 1fr;
-    gap: 24px;
+    grid-template-areas:
+      "pool balance"
+      "pool agenda";
+    column-gap: 24px;
+    row-gap: 12px;
     align-items: start;
+  }
+  .plan-pool {
+    grid-area: pool;
+  }
+  .plan-balance {
+    grid-area: balance;
+  }
+  .plan-agenda {
+    grid-area: agenda;
+  }
+  /* balance shares the agenda's 7-column grid so days line up vertically */
+  .plan-balance .balance {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 8px;
+    margin: 0;
   }
   .plan-pool .section-head {
     margin-top: 0 !important;
   }
+  /* day labels already sit in the balance row above the columns */
   .plan-agenda-title {
-    margin-top: 0;
+    display: none;
   }
   /* weekly agenda as 7 day-columns, tasks under each day */
   .plan-agenda .agenda {
