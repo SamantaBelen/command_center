@@ -1086,7 +1086,7 @@ export default function Home() {
       )}
 
       {view === "planear" && (
-        <section className="section" style={{ marginTop: 22 }}>
+        <section className="section plan-section" style={{ marginTop: 22 }}>
           <div className="section-head">
             <h2 className="section-title serif">Planea tu semana</h2>
           </div>
@@ -1176,6 +1176,8 @@ export default function Home() {
                     })}
                   </div>
 
+                  <div className="plan-cols">
+                  <div className="plan-pool">
                   {(() => {
                     const prank: Record<string, number> = { High: 0, Medium: 1, Low: 2 };
                     const sortedPool = [...planData.pool].sort(
@@ -1204,10 +1206,10 @@ export default function Home() {
                       </>
                     );
                   })()}
+                  </div>
 
-                  <h3 className="bucket-title" style={{ marginTop: 28 }}>
-                    La semana
-                  </h3>
+                  <div className="plan-agenda">
+                  <h3 className="bucket-title plan-agenda-title">La semana</h3>
                   <div className="agenda">
                     {planData.weekDays.map((iso) => {
                       const dayTasks = planData.week
@@ -1252,6 +1254,8 @@ export default function Home() {
                         </div>
                       );
                     })}
+                  </div>
+                  </div>
                   </div>
                 </>
               );
