@@ -187,6 +187,33 @@ function Chevron() {
     </span>
   );
 }
+function CalIcon() {
+  return (
+    <svg className="seg-ico" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <rect x="3.5" y="5" width="17" height="15" rx="2.5" stroke="currentColor" strokeWidth="1.7" />
+      <path
+        d="M3.5 9.5h17M8 3.5v3M16 3.5v3"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+function Sprout() {
+  // small consistent task glyph (per-task category icons would need a Notion field)
+  return (
+    <svg className="task-ico" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M5 19c7 0 13-5 14-14C10 5 5 10 5 19zm0 0c0-4 2-7 5-9"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
 /* ---------- date helpers (Eastern) ---------- */
 function partsET(d: Date) {
   return new Intl.DateTimeFormat("en-CA", {
@@ -272,6 +299,18 @@ function dowLetter(iso: string): string {
   const [y, m, d] = iso.split("-").map(Number);
   const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay(); // 0 Sun..6 Sat
   return ["D", "L", "M", "M", "J", "V", "S"][dow];
+}
+// "Jueves, 29 de mayo"
+function fullDayES(iso: string): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  const s = new Intl.DateTimeFormat("es-ES", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    timeZone: "UTC",
+  }).format(dt);
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 function clockES(dateStr: string): string {
   if (!(dateStr.length > 10 && dateStr.includes("T"))) return "";
@@ -359,6 +398,8 @@ export default function Home() {
   const [planData, setPlanData] = useState<PlanData | null>(null);
   const [planLoading, setPlanLoading] = useState(false);
   const [planWeek, setPlanWeek] = useState<"this" | "next">("this");
+  // Focused day in the weekly agenda (Semana); null = default to today/first.
+  const [selDay, setSelDay] = useState<string | null>(null);
 
   // Per-day guide times for the Día dayparts (visual anchors, stored on-device).
   const [guides, setGuides] = useState(DEFAULT_GUIDES);
@@ -1088,7 +1129,7 @@ export default function Home() {
       {view === "planear" && (
         <section className="section plan-section" style={{ marginTop: 22 }}>
           <div className="section-head">
-            <h2 className="section-title serif">Planea tu semana</h2>
+            <h2 className="section-title serif plan-title">Planea tu semana</h2>
           </div>
           <div className="seg">
             <button
@@ -1098,6 +1139,7 @@ export default function Home() {
                 loadPlan("this");
               }}
             >
+              <CalIcon />
               Esta semana
             </button>
             <button
@@ -1107,6 +1149,7 @@ export default function Home() {
                 loadPlan("next");
               }}
             >
+              <CalIcon />
               La próxima semana
             </button>
           </div>
@@ -1134,6 +1177,14 @@ export default function Home() {
                   ? { pend: s.pendMins, done: s.doneMins }
                   : { pend: s.pendCount, done: s.doneCount };
               const max = Math.max(1, ...stats.map((s) => val(s).pend + val(s).done));
+              // Focused day: the chosen one if it's in this week, else today, else first.
+              const sel =
+                selDay && planData.weekDays.includes(selDay)
+                  ? selDay
+                  : planData.weekDays.includes(planData.today)
+                  ? planData.today
+                  : planData.weekDays[0];
+              const selIdx = planData.weekDays.indexOf(sel);
               return (
                 <>
                   <div className="plan-cols">
@@ -1146,11 +1197,10 @@ export default function Home() {
                       return (
                         <button
                           key={s.iso}
-                          className={`bal-day ${s.iso === planData.today ? "bal-today" : ""}`}
-                          onClick={() => {
-                            setView("hoy");
-                            load(s.iso);
-                          }}
+                          className={`bal-day ${s.iso === planData.today ? "bal-today" : ""} ${
+                            s.iso === sel ? "bal-sel" : ""
+                          }`}
+                          onClick={() => setSelDay(s.iso)}
                         >
                           <span className="bal-dow">{dowLetter(s.iso)}</span>
                           <span className="bal-num">{Number(s.iso.slice(8, 10))}</span>
@@ -1211,7 +1261,39 @@ export default function Home() {
                   </div>
 
                   <div className="plan-agenda">
-                  <h3 className="bucket-title plan-agenda-title">La semana</h3>
+                  <div className="agenda-dayhead">
+                    <h3 className="agenda-daytitle serif">{fullDayES(sel)}</h3>
+                    <div className="agenda-daynav">
+                      <button
+                        className="daynav-btn"
+                        aria-label="Día anterior"
+                        disabled={selIdx <= 0}
+                        onClick={() =>
+                          selIdx > 0 && setSelDay(planData.weekDays[selIdx - 1])
+                        }
+                      >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M15 6l-6 6 6 6" />
+                        </svg>
+                      </button>
+                      <button className="daynav-today" onClick={() => setSelDay(planData.today)}>
+                        Hoy
+                      </button>
+                      <button
+                        className="daynav-btn"
+                        aria-label="Día siguiente"
+                        disabled={selIdx >= planData.weekDays.length - 1}
+                        onClick={() =>
+                          selIdx < planData.weekDays.length - 1 &&
+                          setSelDay(planData.weekDays[selIdx + 1])
+                        }
+                      >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M9 6l6 6-6 6" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
                   <div className="agenda">
                     {planData.weekDays.map((iso) => {
                       const dayTasks = planData.week
@@ -1223,35 +1305,52 @@ export default function Home() {
                           return (a.date ?? "").localeCompare(b.date ?? "");
                         });
                       const isToday = iso === planData.today;
+                      const isSel = iso === sel;
                       return (
-                        <div key={iso} className={`agenda-day ${isToday ? "agenda-now" : ""}`}>
-                          <div
-                            className="agenda-head"
-                            onClick={() => {
-                              setView("hoy");
-                              load(iso);
-                            }}
-                          >
+                        <div
+                          key={iso}
+                          className={`agenda-day ${isToday ? "agenda-now" : ""} ${
+                            isSel ? "agenda-sel" : ""
+                          }`}
+                        >
+                          <div className="agenda-head" onClick={() => setSelDay(iso)}>
                             <span className="agenda-dow">{shortDayES(iso)}</span>
-                            {isToday && <span className="agenda-today">hoy</span>}
-                            <span className="agenda-n">{dayTasks.length || ""}</span>
+                            {isToday && <span className="agenda-today">Hoy</span>}
+                            {dayTasks.length > 0 && (
+                              <span className="agenda-n">{dayTasks.length}</span>
+                            )}
                           </div>
                           {dayTasks.length === 0 ? (
-                            <div className="agenda-empty">Libre</div>
+                            <div className="agenda-empty">
+                              <Sprout />
+                              Libre
+                            </div>
                           ) : (
-                            dayTasks.map((t) => (
-                              <div
-                                key={t.id}
-                                className={`agenda-item ${t.status === "Done" ? "done" : ""}`}
-                                onClick={() => openTaskSheet(t)}
-                              >
-                                <i className="dot" style={{ background: statusColor(t.status) }} />
-                                <span className="agenda-title">{t.title}</span>
-                                {clockES(t.date ?? "") && (
-                                  <span className="agenda-time">{clockES(t.date ?? "")}</span>
-                                )}
-                              </div>
-                            ))
+                            dayTasks.map((t) => {
+                              const start = clockES(t.date ?? "");
+                              const end =
+                                hasTime(t.date) && t.estMin
+                                  ? clockPlusES(t.date ?? "", t.estMin)
+                                  : "";
+                              return (
+                                <div
+                                  key={t.id}
+                                  className={`agenda-item ${t.status === "Done" ? "done" : ""}`}
+                                  onClick={() => openTaskSheet(t)}
+                                >
+                                  <div className="agenda-item-head">
+                                    <Sprout />
+                                    <span className="agenda-title">{t.title}</span>
+                                  </div>
+                                  {start && (
+                                    <span className="agenda-time">
+                                      {start}
+                                      {end ? ` – ${end}` : ""}
+                                    </span>
+                                  )}
+                                </div>
+                              );
+                            })
                           )}
                         </div>
                       );

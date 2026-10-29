@@ -410,8 +410,8 @@ textarea,
   gap: 5px;
   background: var(--bg-soft);
   border: 1px solid var(--line);
-  border-radius: 13px;
-  padding: 4px;
+  border-radius: 999px;
+  padding: 5px;
   margin: 0 2px 18px;
 }
 .seg button {
@@ -420,14 +420,24 @@ textarea,
   background: none;
   font-family: inherit;
   font-size: 13.5px;
-  padding: 9px 6px;
-  border-radius: 9px;
+  padding: 10px 6px;
+  border-radius: 999px;
   color: var(--muted);
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: background 0.18s ease, color 0.18s ease;
+}
+.seg-ico {
+  width: 16px;
+  height: 16px;
+  opacity: 0.9;
 }
 .seg button.seg-on {
-  background: var(--card);
-  color: var(--burgundy);
+  background: var(--burgundy);
+  color: #f6efe9;
   font-weight: 700;
   box-shadow: var(--shadow-sm);
 }
@@ -760,8 +770,87 @@ textarea,
 }
 
 /* ---------- weekly agenda (Planear) ---------- */
-.plan-agenda-title {
-  margin-top: 28px;
+/* "Planea tu semana" underline accent */
+.plan-title::after {
+  content: "";
+  display: block;
+  width: 56px;
+  height: 3px;
+  border-radius: 999px;
+  background: var(--burgundy);
+  margin-top: 8px;
+}
+/* selected-day header + day navigation */
+.agenda-dayhead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 20px 0 12px;
+}
+.agenda-daytitle {
+  font-size: 20px;
+  color: var(--ink);
+  margin: 0;
+}
+.agenda-daynav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+.daynav-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--burgundy);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+}
+.daynav-btn svg {
+  width: 16px;
+  height: 16px;
+}
+.daynav-btn:disabled {
+  color: var(--muted-2);
+  opacity: 0.5;
+  cursor: default;
+}
+.daynav-today {
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--burgundy);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 6px 15px;
+  cursor: pointer;
+}
+.task-ico {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  color: var(--muted-2);
+  margin-top: 2px;
+}
+/* selected day highlight */
+.bal-sel {
+  border-color: var(--burgundy);
+  box-shadow: inset 0 0 0 1px var(--burgundy);
+  background: rgba(110, 43, 58, 0.05);
+}
+.bal-sel .bal-dow {
+  color: var(--burgundy);
+  font-weight: 700;
+}
+.agenda-sel {
+  border-left-color: var(--burgundy);
 }
 .agenda {
   display: flex;
@@ -802,18 +891,33 @@ textarea,
 }
 .agenda-n {
   margin-left: auto;
-  font-size: 12px;
-  color: var(--muted-2);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  background: var(--bg-soft);
+  border-radius: 999px;
+  min-width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 5px;
 }
 .agenda-empty {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   font-size: 13px;
   color: var(--muted-2);
   padding: 2px 0;
 }
+.agenda-empty .task-ico {
+  opacity: 0.7;
+}
 .agenda-item {
   display: flex;
-  align-items: center;
-  gap: 9px;
+  flex-direction: column;
+  gap: 3px;
   padding: 7px 10px;
   background: var(--card);
   border: 1px solid var(--line);
@@ -824,17 +928,17 @@ textarea,
 .agenda-item:active {
   background: var(--card-2);
 }
-.agenda-item .dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex: 0 0 auto;
+.agenda-item-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
 }
 .agenda-title {
   flex: 1 1 auto;
   font-size: 14.5px;
   color: var(--ink);
   overflow-wrap: anywhere;
+  line-height: 1.3;
 }
 .agenda-item.done {
   background: var(--gold-tint);
@@ -845,10 +949,13 @@ textarea,
   text-decoration: line-through;
   text-decoration-color: var(--gold-soft);
 }
+.agenda-item.done .task-ico {
+  color: var(--gold-ink);
+}
 .agenda-time {
-  flex: 0 0 auto;
   font-size: 12px;
   color: var(--muted);
+  margin-left: 21px;
 }
 
 /* ---------- planning (Semana) buckets ---------- */
@@ -1484,6 +1591,15 @@ textarea,
     border-color: var(--burgundy-soft);
     background: var(--card);
   }
+  /* selected day gets the strong highlight */
+  .plan-agenda .agenda-sel {
+    border-color: var(--burgundy);
+    box-shadow: inset 0 0 0 1px var(--burgundy);
+    background: rgba(110, 43, 58, 0.04);
+  }
+  .agenda-dayhead {
+    margin-top: 0;
+  }
   .plan-agenda .agenda-head {
     flex-wrap: wrap;
     gap: 3px 6px;
@@ -1492,18 +1608,14 @@ textarea,
   .plan-agenda .agenda-dow {
     font-size: 12.5px;
   }
-  .plan-agenda .agenda-n {
-    font-size: 11px;
-  }
   .plan-agenda .agenda-item {
-    align-items: flex-start;
-    gap: 6px;
-    padding: 5px 7px;
+    gap: 2px;
+    padding: 6px 8px;
     border-radius: 9px;
   }
-  /* drop the inline dot to free width in the narrow day columns */
-  .plan-agenda .agenda-item .dot {
-    display: none;
+  .plan-agenda .task-ico {
+    width: 13px;
+    height: 13px;
   }
   .plan-agenda .agenda-title {
     font-size: 12px;
@@ -1511,10 +1623,40 @@ textarea,
     overflow-wrap: break-word;
   }
   .plan-agenda .agenda-time {
-    display: none;
+    font-size: 10.5px;
+    margin-left: 20px;
   }
   .plan-agenda .agenda-empty {
     font-size: 12px;
     padding: 2px 0;
+  }
+}
+
+/* ---------- decorative botanicals (laptop only, behind content) ---------- */
+.deco {
+  display: none;
+}
+@media (min-width: 900px) {
+  .deco {
+    display: block;
+    position: fixed;
+    z-index: -1;
+    width: 220px;
+    height: 220px;
+    opacity: 0.6;
+    pointer-events: none;
+  }
+  .deco svg {
+    width: 100%;
+    height: 100%;
+  }
+  .deco-tr {
+    top: -26px;
+    right: -26px;
+  }
+  .deco-bl {
+    bottom: -26px;
+    left: -26px;
+    transform: rotate(180deg);
   }
 }
