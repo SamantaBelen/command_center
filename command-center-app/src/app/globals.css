@@ -1435,7 +1435,7 @@ textarea,
   }
   .plan-cols {
     display: grid;
-    grid-template-columns: minmax(250px, 300px) 1fr;
+    grid-template-columns: minmax(210px, 250px) 1fr;
     grid-template-areas:
       "pool balance"
       "pool agenda";
