@@ -1198,6 +1198,119 @@ textarea,
   min-height: 18px;
 }
 
+/* ---------- perfil: habits ---------- */
+.habits-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.habit {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 14px 16px;
+}
+.habit-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+.habit-name {
+  font-size: 16px;
+  color: var(--ink);
+  font-weight: 600;
+}
+.habit-pct {
+  flex: 0 0 auto;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--burgundy);
+  font-variant-numeric: tabular-nums;
+}
+.habit-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.hchip {
+  font-size: 11.5px;
+  color: var(--muted);
+  background: var(--card-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 2px 9px;
+  white-space: nowrap;
+}
+.habit-bar {
+  margin-top: 10px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--line);
+  overflow: hidden;
+}
+.habit-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--burgundy-soft), var(--burgundy));
+}
+.habit-foot {
+  margin-top: 8px;
+  font-size: 11.5px;
+  color: var(--muted-2);
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.habit-off {
+  opacity: 0.66;
+  background: var(--card-2);
+}
+.habit-off .habit-name {
+  color: var(--muted);
+  font-weight: 500;
+}
+.habit-off .habit-pct {
+  color: var(--muted-2);
+}
+.habit-off .habit-bar > span {
+  background: var(--muted-2);
+}
+.inactive-toggle {
+  width: 100%;
+  margin-top: 16px;
+  padding: 11px 14px;
+  background: none;
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.inactive-toggle:hover {
+  color: var(--burgundy);
+  border-color: var(--burgundy-soft);
+}
+.inactive-toggle .chev {
+  width: 16px;
+  height: 16px;
+  transition: transform 0.2s ease;
+}
+.inactive-toggle .chev.open {
+  transform: rotate(180deg);
+}
+.inactive-toggle + .habits-list {
+  margin-top: 10px;
+}
+
 /* ---------- laptop / wide screens: left sidebar layout ---------- */
 @media (min-width: 900px) {
   :root {

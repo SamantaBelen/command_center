@@ -5,6 +5,7 @@ const notion = new Client({ auth: process.env.NOTION_TOKEN });
 
 const TASKS_DB = process.env.NOTION_TASKS_DB ?? "3872cd384e9780dea0d0e780b94cfb40";
 const CHECKINS_DB = process.env.NOTION_CHECKINS_DB ?? "25c3317dc9c7430a885c0aa6b009f1f1";
+const HABITS_DB = process.env.NOTION_HABITS_DB ?? "1265804c0ee44dfeb9532b677cba03da";
 
 // "Hoy" in America/New_York (Eastern), regardless of the server's UTC clock.
 export function todayET(): string {
@@ -38,6 +39,21 @@ export type Habit = {
   order: number | null;
 };
 
+// A habit definition (from the Habits database), for the Perfil view.
+export type HabitDef = {
+  id: string;
+  name: string;
+  active: boolean;
+  cadence: string | null;
+  target: number | null;
+  order: number | null;
+  timeOfDay: string | null; // morning / afternoon / night
+  estMin: number | null;
+  lastDone: string | null; // ISO date (rollup), or null
+  timesDone: number | null; // count of completed check-ins (rollup)
+  constancia: number | null; // 0–1 percent of check-ins done (rollup)
+};
+
 function plainTitle(prop: any): string {
   const arr = prop?.title ?? prop?.rich_text ?? [];
   return arr.map((t: any) => t?.plain_text ?? "").join("").trim();
@@ -46,6 +62,25 @@ function plainTitle(prop: any): string {
 function firstMultiSelect(prop: any): string | null {
   const arr = prop?.multi_select;
   if (Array.isArray(arr) && arr.length) return arr[0]?.name ?? null;
+  return null;
+}
+
+function rollupNumber(prop: any): number | null {
+  const r = prop?.rollup;
+  return r?.type === "number" ? r.number ?? null : null;
+}
+
+function rollupDate(prop: any): string | null {
+  const r = prop?.rollup;
+  if (r?.type === "date") return r.date?.start ?? null;
+  // latest_date can also surface as an array of dated values
+  if (r?.type === "array" && Array.isArray(r.array)) {
+    const dates = r.array
+      .map((e: any) => e?.date?.start)
+      .filter(Boolean)
+      .sort();
+    return dates.length ? dates[dates.length - 1] : null;
+  }
   return null;
 }
 
@@ -160,6 +195,52 @@ export async function getHabits(dateISO: string): Promise<Habit[]> {
     const bo = b.order ?? 9999;
     if (ao !== bo) return ao - bo;
     return a.title.localeCompare(b.title);
+  });
+
+  return habits;
+}
+
+// All habit definitions (active and inactive) for the Perfil view.
+export async function getAllHabits(): Promise<HabitDef[]> {
+  const res = await notion.databases.query({
+    database_id: HABITS_DB,
+    page_size: 200,
+  });
+
+  const CAD_ORDER: Record<string, number> = {
+    Daily: 0,
+    Weekly: 1,
+    Monthly: 2,
+    Bimonthly: 3,
+    Yearly: 4,
+  };
+
+  const habits: HabitDef[] = res.results.map((page: any) => {
+    const p = page.properties ?? {};
+    return {
+      id: page.id,
+      name: plainTitle(p["Name"]) || "(sin nombre)",
+      active: p["Active"]?.checkbox ?? false,
+      cadence: p["Cadence"]?.select?.name ?? null,
+      target: p["Target"]?.number ?? null,
+      order: p["Order"]?.number ?? null,
+      timeOfDay: p["Time of Day"]?.select?.name ?? null,
+      estMin: p["Tiempo estimado (min)"]?.number ?? null,
+      lastDone: rollupDate(p["Last done"]),
+      timesDone: rollupNumber(p["Times done"]),
+      constancia: rollupNumber(p["Constancia"]),
+    };
+  });
+
+  // Order by cadence, then Order, then name (active/inactive split in the UI).
+  habits.sort((a, b) => {
+    const ca = CAD_ORDER[a.cadence ?? ""] ?? 9;
+    const cb = CAD_ORDER[b.cadence ?? ""] ?? 9;
+    if (ca !== cb) return ca - cb;
+    const ao = a.order ?? 9999;
+    const bo = b.order ?? 9999;
+    if (ao !== bo) return ao - bo;
+    return a.name.localeCompare(b.name);
   });
 
   return habits;
