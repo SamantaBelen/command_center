@@ -1132,30 +1132,6 @@ export default function Home() {
             <h2 className="section-title serif plan-title">Planea tu semana</h2>
           </div>
           <div className="plan-cols">
-          <div className="plan-seg">
-          <div className="seg">
-            <button
-              className={planWeek === "this" ? "seg-on" : ""}
-              onClick={() => {
-                setPlanWeek("this");
-                loadPlan("this");
-              }}
-            >
-              <CalIcon />
-              Esta semana
-            </button>
-            <button
-              className={planWeek === "next" ? "seg-on" : ""}
-              onClick={() => {
-                setPlanWeek("next");
-                loadPlan("next");
-              }}
-            >
-              <CalIcon />
-              La próxima semana
-            </button>
-          </div>
-          </div>
           {planLoading && !planData ? (
             <div className="plan-loading">Cargando…</div>
           ) : planData ? (
@@ -1190,6 +1166,61 @@ export default function Home() {
               const selIdx = planData.weekDays.indexOf(sel);
               return (
                 <>
+                  <div className="plan-pool">
+                  {(() => {
+                    const prank: Record<string, number> = { High: 0, Medium: 1, Low: 2 };
+                    const sortedPool = [...planData.pool].sort(
+                      (a, b) =>
+                        (prank[a.priority ?? ""] ?? 3) - (prank[b.priority ?? ""] ?? 3) ||
+                        (a.estMin ?? 9999) - (b.estMin ?? 9999)
+                    );
+                    const poolMins = sortedPool.reduce((s, t) => s + (t.estMin ?? 0), 0);
+                    return (
+                      <>
+                        <div className="section-head" style={{ marginTop: 0 }}>
+                          <h3 className="bucket-title" style={{ margin: 0 }}>
+                            {planData.bucket} · por repartir
+                          </h3>
+                          <span className="count">
+                            {sortedPool.length}
+                            {poolMins ? ` · ≈ ${fmtMin(poolMins)}` : ""}
+                          </span>
+                        </div>
+                        {sortedPool.length === 0 ? (
+                          <div className="empty">¡Semana repartida! ✦</div>
+                        ) : (
+                          <div className="list">{sortedPool.map((t) => renderCard(t))}</div>
+                        )}
+                        <p className="hint">Toca una tarea para puntuarla y agendarla.</p>
+                      </>
+                    );
+                  })()}
+                  </div>
+
+                  <div className="plan-right">
+                  <div className="seg">
+                    <button
+                      className={planWeek === "this" ? "seg-on" : ""}
+                      onClick={() => {
+                        setPlanWeek("this");
+                        loadPlan("this");
+                      }}
+                    >
+                      <CalIcon />
+                      Esta semana
+                    </button>
+                    <button
+                      className={planWeek === "next" ? "seg-on" : ""}
+                      onClick={() => {
+                        setPlanWeek("next");
+                        loadPlan("next");
+                      }}
+                    >
+                      <CalIcon />
+                      La próxima semana
+                    </button>
+                  </div>
+
                   <div className="plan-balance">
                   <div className="balance">
                     {stats.map((s) => {
@@ -1229,37 +1260,6 @@ export default function Home() {
                       );
                     })}
                   </div>
-                  </div>
-
-                  <div className="plan-pool">
-                  {(() => {
-                    const prank: Record<string, number> = { High: 0, Medium: 1, Low: 2 };
-                    const sortedPool = [...planData.pool].sort(
-                      (a, b) =>
-                        (prank[a.priority ?? ""] ?? 3) - (prank[b.priority ?? ""] ?? 3) ||
-                        (a.estMin ?? 9999) - (b.estMin ?? 9999)
-                    );
-                    const poolMins = sortedPool.reduce((s, t) => s + (t.estMin ?? 0), 0);
-                    return (
-                      <>
-                        <div className="section-head" style={{ marginTop: 26 }}>
-                          <h3 className="bucket-title" style={{ margin: 0 }}>
-                            {planData.bucket} · por repartir
-                          </h3>
-                          <span className="count">
-                            {sortedPool.length}
-                            {poolMins ? ` · ≈ ${fmtMin(poolMins)}` : ""}
-                          </span>
-                        </div>
-                        {sortedPool.length === 0 ? (
-                          <div className="empty">¡Semana repartida! ✦</div>
-                        ) : (
-                          <div className="list">{sortedPool.map((t) => renderCard(t))}</div>
-                        )}
-                        <p className="hint">Toca una tarea para puntuarla y agendarla.</p>
-                      </>
-                    );
-                  })()}
                   </div>
 
                   <div className="plan-agenda">
@@ -1357,6 +1357,7 @@ export default function Home() {
                         </div>
                       );
                     })}
+                  </div>
                   </div>
                   </div>
                 </>
