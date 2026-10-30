@@ -1531,6 +1531,71 @@ textarea,
   background: rgba(110, 43, 58, 0.05);
 }
 
+/* ---------- Google Calendar events (read-only, sage accent) ---------- */
+.cal-ico {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  color: #6f7d58;
+  margin-top: 2px;
+}
+.cal-event {
+  background: #f1f3ec;
+  border: 1px solid #d9e0cd;
+  border-left: 3px solid #8f9e77;
+  border-radius: 11px;
+  padding: 7px 10px;
+  margin-bottom: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.cal-event .agenda-title {
+  color: #4f5a3e;
+}
+.cal-event .agenda-time {
+  color: #7c8763;
+}
+.cal-event.allday .agenda-title {
+  font-weight: 600;
+}
+.plan-agenda .cal-ico {
+  width: 13px;
+  height: 13px;
+}
+/* Día timeline: calendar block */
+.calblock {
+  background: #f1f3ec;
+  border-color: #d9e0cd;
+  border-left: 3px solid #8f9e77;
+}
+.calblock .dayblock-time,
+.calblock .dayblock-title {
+  color: #4f5a3e;
+}
+/* Día: all-day events band */
+.allday-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.allday-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #f1f3ec;
+  border: 1px solid #d9e0cd;
+  border-left: 3px solid #8f9e77;
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 12.5px;
+  color: #4f5a3e;
+}
+.allday-chip .cal-ico {
+  margin-top: 0;
+}
+
 /* Semana columns — mobile stacks them: toggle, balance, pool, agenda */
 .plan-cols {
   display: flex;
