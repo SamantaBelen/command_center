@@ -4,7 +4,7 @@ import { AUTH_COOKIE, expectedToken } from "./lib/auth";
 
 export const config = {
   // Guard everything except the login page, the auth API, and static assets.
-  matcher: ["/((?!login|api/auth|_next/static|_next/image|manifest.json|icons|favicon.ico).*)"],
+  matcher: ["/((?!login|privacy|api/auth|_next/static|_next/image|manifest.json|icons|favicon.ico).*)"],
 };
 
 export async function middleware(req: NextRequest) {
