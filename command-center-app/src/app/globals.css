@@ -1681,6 +1681,25 @@ textarea,
   order: 4;
 }
 
+/* Día columns — mobile: timeline first, "Sin hora" below (unchanged) */
+.day-cols {
+  display: flex;
+  flex-direction: column;
+}
+.day-flow-col {
+  order: 1;
+}
+.day-pool {
+  order: 2;
+  margin-top: 18px;
+}
+/* drop an untimed task on a daypart to give it that time */
+.daypart.drag-over {
+  border-color: var(--burgundy);
+  box-shadow: inset 0 0 0 2px var(--burgundy-soft);
+  background: rgba(110, 43, 58, 0.06);
+}
+
 /* ---------- laptop / wide screens: wider content, bottom nav kept ---------- */
 @media (min-width: 900px) {
   /* Nav stays a bottom bar like mobile; content is just wider and centered. */
@@ -1713,6 +1732,24 @@ textarea,
   }
   body:has(.plan-section) {
     --fab-right: max(calc((100vw - 1280px) / 2 + 48px), 40px);
+  }
+
+  /* Día: "Sin hora" on the left, timeline on the right */
+  .day-cols {
+    display: grid;
+    grid-template-columns: minmax(220px, 280px) 1fr;
+    grid-template-areas: "pool flow";
+    column-gap: 28px;
+    align-items: start;
+  }
+  .day-pool {
+    grid-area: pool;
+    order: 0;
+    margin-top: 0;
+  }
+  .day-flow-col {
+    grid-area: flow;
+    order: 0;
   }
 
   /* Semana (planear): split into pool + weekly agenda */
