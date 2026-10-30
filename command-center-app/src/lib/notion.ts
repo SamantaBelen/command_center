@@ -267,12 +267,44 @@ export async function setCheckinPlanned(id: string, iso: string | null): Promise
   });
 }
 
+// Constancia (done ÷ due) per habit, counting only check-ins whose period has
+// already started (Period start ≤ today). Pre-generated future check-ins exist
+// for the Día view but must not drag the percentage down before their day.
+async function constanciaByHabit(today: string): Promise<Map<string, number>> {
+  const rows: any[] = [];
+  let cursor: string | undefined;
+  do {
+    const r: any = await notion.databases.query({
+      database_id: CHECKINS_DB,
+      filter: { property: "Period start", date: { on_or_before: today } },
+      page_size: 100,
+      start_cursor: cursor,
+    });
+    rows.push(...r.results);
+    cursor = r.has_more ? r.next_cursor : undefined;
+  } while (cursor);
+
+  const tally = new Map<string, { done: number; total: number }>();
+  for (const p of rows) {
+    const props = p.properties ?? {};
+    const itemId = props["Item"]?.relation?.[0]?.id;
+    if (!itemId) continue;
+    const t = tally.get(itemId) ?? { done: 0, total: 0 };
+    t.total += 1;
+    if (props["Done"]?.checkbox) t.done += 1;
+    tally.set(itemId, t);
+  }
+  const pct = new Map<string, number>();
+  for (const [id, t] of tally) pct.set(id, t.total ? t.done / t.total : 0);
+  return pct;
+}
+
 // All habit definitions (active and inactive) for the Perfil view.
 export async function getAllHabits(): Promise<HabitDef[]> {
-  const res = await notion.databases.query({
-    database_id: HABITS_DB,
-    page_size: 200,
-  });
+  const [res, constancia] = await Promise.all([
+    notion.databases.query({ database_id: HABITS_DB, page_size: 200 }),
+    constanciaByHabit(todayET()),
+  ]);
 
   const CAD_ORDER: Record<string, number> = {
     Daily: 0,
@@ -295,7 +327,8 @@ export async function getAllHabits(): Promise<HabitDef[]> {
       estMin: p["Tiempo estimado (min)"]?.number ?? null,
       lastDone: rollupDate(p["Last done"]),
       timesDone: rollupNumber(p["Times done"]),
-      constancia: rollupNumber(p["Constancia"]),
+      // computed over past/current periods only (falls back to the rollup)
+      constancia: constancia.has(p.id) ? constancia.get(p.id)! : rollupNumber(p["Constancia"]),
     };
   });
 
