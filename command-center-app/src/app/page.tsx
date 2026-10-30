@@ -308,6 +308,10 @@ function dowLetter(iso: string): string {
   const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay(); // 0 Sun..6 Sat
   return ["D", "L", "M", "M", "J", "V", "S"][dow];
 }
+function addDaysISO(iso: string, n: number): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+}
 // ET calendar date (YYYY-MM-DD) of an event start (date-only passes through).
 function etDayOf(iso: string): string {
   if (iso.length === 10) return iso;
@@ -1679,9 +1683,50 @@ export default function Home() {
           <section className="section" style={{ marginTop: 22 }}>
             <div className="section-head">
               <h2 className="section-title serif">Planea tu día</h2>
-              <span className="count">
-                {data.date === data.today ? "Hoy" : dayLabelES(data.date)}
-              </span>
+              <div className="agenda-daynav">
+                <button
+                  className="daynav-btn"
+                  aria-label="Día anterior"
+                  onClick={() => load(addDaysISO(data.date, -1))}
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M15 6l-6 6 6 6" />
+                  </svg>
+                </button>
+                <button className="daynav-today" onClick={() => load(data.today)}>
+                  Hoy
+                </button>
+                <button
+                  className="daynav-btn"
+                  aria-label="Día siguiente"
+                  onClick={() => load(addDaysISO(data.date, 1))}
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M9 6l6 6-6 6" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <div className="week">
+              {weekDays(data.date).map((d, i) => {
+                const sel = data.date === d.iso;
+                const now = data.today === d.iso;
+                return (
+                  <div
+                    key={i}
+                    className={`day ${sel ? "sel" : ""} ${now ? "now" : ""}`}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => {
+                      if (!sel) load(d.iso);
+                    }}
+                  >
+                    <div className="dow">{d.dow}</div>
+                    <div className="dnum">{d.num}</div>
+                  </div>
+                );
+              })}
             </div>
 
             {allDayEvs.length > 0 && (
