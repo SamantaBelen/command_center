@@ -9,10 +9,11 @@ safe to repeat: a crash, retry, or missed day self-heals on the next run.
 Runs all cadences every day. The Period key makes off-day cadences
 (Weekly/Monthly/Yearly/Bimonthly) no-ops except the first run of each period.
 
-Daily habits are generated for every remaining day of the current ISO week
-(today through Sunday), not just today. So Monday's run seeds the whole week
-and the app's Día view can show each upcoming day's habits ahead of time;
-later days in the week re-run as no-ops (same Period key = idempotent).
+Check-ins are generated for every remaining day of the current ISO week
+(today through Sunday), across all cadences — so each upcoming day the app
+shows has all of its habits, including when the week spans a month-end (the
+next month's Monthly/Bimonthly periods are seeded too). Monday's run seeds the
+whole week; later days re-run as no-ops (same Period key = idempotent).
 
 Requires env var: NOTION_TOKEN  (scoped internal integration token,
 shared with BOTH databases below).
@@ -201,22 +202,29 @@ def week_remaining_days(today):
     return days
 
 
+def periods_for_cadence(cadence, days):
+    """Distinct (key, start, end) periods of `cadence` that cover `days`.
+    For Daily this is one per day; for the others it's the one period each day
+    falls in — usually a single period, but two when the week spans a boundary
+    (e.g. a month-end), so every day the app shows has all its habits."""
+    seen = {}
+    for d in days:
+        key = period_key(cadence, d)
+        if key not in seen:
+            seen[key] = period_bounds(cadence, d)
+    return [(k, s, e) for k, (s, e) in seen.items()]
+
+
 def main():
     today = datetime.datetime.now(EASTERN).date()
     created_total = 0
+    days = week_remaining_days(today)
 
     for cadence in CADENCES:
         habits = active_habits(cadence)
-        # Daily: ensure every remaining day of the week exists; other cadences:
-        # just the current period. Each (habit, Period) pair is deduped, so
-        # re-running any day is safe.
-        if cadence == "Daily":
-            periods = [(d.isoformat(), d, d) for d in week_remaining_days(today)]
-        else:
-            start, end = period_bounds(cadence, today)
-            periods = [(period_key(cadence, today), start, end)]
-
-        for key, start, end in periods:
+        # Ensure every remaining day of the week is fully populated for this
+        # cadence. Each (habit, Period) pair is deduped, so re-running is safe.
+        for key, start, end in periods_for_cadence(cadence, days):
             for habit in habits:
                 name = habit_name(habit)
                 target = habit_target(habit)
