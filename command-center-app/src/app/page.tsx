@@ -1729,6 +1729,39 @@ export default function Home() {
               })}
             </div>
 
+            <div className="day-cols">
+            <div className="day-pool">
+              <h3 className="bucket-title" style={{ margin: 0 }}>
+                Sin hora
+              </h3>
+              {untimed.length === 0 ? (
+                <div className="empty">Todo tiene hora ✦</div>
+              ) : (
+                <div className="list">
+                  {untimed.map((t) => (
+                    <div
+                      key={t.id}
+                      className="pool-drag"
+                      draggable
+                      onDragStart={(ev) => {
+                        ev.dataTransfer.setData("text/plain", t.id);
+                        ev.dataTransfer.effectAllowed = "move";
+                        dragIdRef.current = t.id;
+                      }}
+                      onDragEnd={endDrag}
+                    >
+                      {renderCard(t)}
+                    </div>
+                  ))}
+                </div>
+              )}
+              <p className="hint">
+                Arrastra una tarea a una franja (mañana · almuerzo · noche) para darle hora, o
+                tócala.
+              </p>
+            </div>
+
+            <div className="day-flow-col">
             {allDayEvs.length > 0 && (
               <div className="allday-row">
                 {allDayEvs.map((ev) => (
@@ -1747,7 +1780,23 @@ export default function Home() {
             <div className="dayflow">
               {events.map((e) =>
                 e.kind === "anchor" ? (
-                  <div className="daypart" key={e.id}>
+                  <div
+                    className={`daypart ${dragOverDay === e.akey ? "drag-over" : ""}`}
+                    key={e.id}
+                    onDragOver={(ev) => {
+                      if (!dragIdRef.current) return;
+                      ev.preventDefault();
+                      ev.dataTransfer.dropEffect = "move";
+                      if (dragOverDay !== e.akey) setDragOverDay(e.akey);
+                    }}
+                    onDrop={(ev) => {
+                      ev.preventDefault();
+                      const id = ev.dataTransfer.getData("text/plain");
+                      const task = data.tasks.find((x) => x.id === id);
+                      endDrag();
+                      if (task) saveTime(task, e.time);
+                    }}
+                  >
                     <span className="daypart-name">
                       <span className="daypart-ico">{e.ico}</span>
                       {e.label}
@@ -1801,19 +1850,12 @@ export default function Home() {
               )}
             </div>
 
-            {untimed.length > 0 && (
-              <>
-                <div className="sheet-divider">
-                  <span>Sin hora</span>
-                </div>
-                <div className="list">{untimed.map((t) => renderCard(t))}</div>
-              </>
-            )}
-
             <p className="hint">
               Todo va en orden por hora; las anclas se mueven contigo. La duración marca cuándo
               una tarea se solapa con lo siguiente.
             </p>
+            </div>
+            </div>
           </section>
         );
       })()}
