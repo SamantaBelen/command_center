@@ -1007,10 +1007,14 @@ textarea,
 }
 
 /* ---------- floating add button ---------- */
+:root {
+  --fab-right: max(calc((100vw - 480px) / 2 + 20px), 20px);
+  --fab-bottom: calc(var(--nav-h) + env(safe-area-inset-bottom) + 14px);
+}
 .fab {
   position: fixed;
-  right: max(calc((100vw - 480px) / 2 + 20px), 20px);
-  bottom: calc(var(--nav-h) + env(safe-area-inset-bottom) + 14px);
+  right: var(--fab-right);
+  bottom: var(--fab-bottom);
   width: 56px;
   height: 56px;
   border-radius: 50%;
@@ -1030,6 +1034,65 @@ textarea,
 .fab svg {
   width: 24px;
   height: 24px;
+  transition: transform 0.18s ease;
+}
+.fab-x svg {
+  transform: rotate(45deg);
+}
+/* speed-dial (Día / Semana): new task or new event */
+.fab-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 39;
+}
+.fab-menu {
+  position: fixed;
+  right: var(--fab-right);
+  bottom: calc(var(--fab-bottom) + 68px);
+  z-index: 41;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: flex-end;
+}
+.fab-opt {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 9px 16px 9px 12px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+  box-shadow: var(--shadow-float);
+  cursor: pointer;
+}
+.fab-opt-ico {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--burgundy);
+  color: #f6efe9;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  flex: 0 0 auto;
+}
+.fab-opt-ico.cal {
+  background: #8f9e77;
+}
+.fab-opt-ico.cal svg {
+  width: 14px;
+  height: 14px;
+}
+.cal-event,
+.calblock,
+.allday-chip {
+  cursor: pointer;
 }
 
 /* ---------- bottom nav ---------- */
@@ -1643,13 +1706,13 @@ textarea,
   .tab:hover {
     color: var(--burgundy);
   }
-  /* FAB sits above the bottom nav, aligned to the content column */
-  .fab {
-    right: max(calc((100vw - 820px) / 2 + 24px), 24px);
-    bottom: calc(var(--nav-h) + env(safe-area-inset-bottom) + 20px);
+  /* FAB (and its speed-dial) sit above the bottom nav, aligned to the column */
+  :root {
+    --fab-right: max(calc((100vw - 820px) / 2 + 24px), 24px);
+    --fab-bottom: calc(var(--nav-h) + env(safe-area-inset-bottom) + 20px);
   }
-  body:has(.plan-section) .fab {
-    right: max(calc((100vw - 1280px) / 2 + 48px), 40px);
+  body:has(.plan-section) {
+    --fab-right: max(calc((100vw - 1280px) / 2 + 48px), 40px);
   }
 
   /* Semana (planear): split into pool + weekly agenda */
