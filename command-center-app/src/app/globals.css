@@ -759,6 +759,102 @@ textarea,
   text-decoration: line-through;
   text-decoration-color: var(--gold-soft);
 }
+
+/* habit block on the Día timeline — sage accent, with its own Done checkbox */
+.habitblock {
+  border-left: 3px solid #b8c4a2;
+  cursor: default;
+}
+.habitblock .dayblock-time {
+  color: #4f5a3e;
+}
+.habitblock .habit-check {
+  flex: 0 0 auto;
+  display: inline-flex;
+}
+.habitblock .check {
+  width: 22px;
+  height: 22px;
+  border-color: #b8c4a2;
+}
+.habitblock .check svg {
+  width: 11px;
+  height: 11px;
+}
+.habitblock.done .check,
+.agenda-habit.done .check {
+  background: #8f9e77;
+  border-color: #8f9e77;
+}
+.habitblock.done .check svg,
+.agenda-habit.done .check svg {
+  opacity: 1;
+}
+.habitblock .dayblock-title {
+  cursor: pointer;
+}
+.habitblock.done {
+  background: #f1f3ec;
+  border-color: #dfe5d2;
+}
+.habitblock.done .dayblock-time {
+  color: #6b7659;
+}
+.habitblock.done .dayblock-title {
+  color: #6b7659;
+  text-decoration: line-through;
+  text-decoration-color: #b8c4a2;
+}
+
+/* ephemeral daypart drop zones (Día), shown only while a card is dragged */
+.daypart-zones {
+  display: flex;
+  gap: 8px;
+  margin: 2px 0 10px;
+}
+.daypart-zone {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 10px 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--burgundy);
+  background: var(--card-2);
+  border: 1.5px dashed var(--burgundy-soft);
+  border-radius: 12px;
+  text-align: center;
+}
+.daypart-zone .daypart-ico {
+  font-size: 14px;
+}
+.daypart-zone-time {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--muted-2);
+  font-variant-numeric: tabular-nums;
+}
+.daypart-zone.drag-over {
+  border-style: solid;
+  border-color: var(--burgundy);
+  background: rgba(110, 43, 58, 0.08);
+}
+
+/* habit chip in the Semana day column — sage, smaller checkbox */
+.agenda-habit {
+  border-left: 2px solid #b8c4a2;
+}
+.agenda-habit .check {
+  width: 16px;
+  height: 16px;
+  border-color: #b8c4a2;
+}
+.agenda-habit .check svg {
+  width: 9px;
+  height: 9px;
+}
 .time-input {
   font-family: inherit;
   font-size: 16px;

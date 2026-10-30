@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getPlannedTasks, getWeekTasks, todayET } from "@/lib/notion";
+import { getPlannedTasks, getWeekTasks, getWeekHabits, todayET } from "@/lib/notion";
 import { weekBounds } from "@/lib/planning";
 
 export const runtime = "nodejs";
@@ -20,9 +20,10 @@ export async function GET(req: Request) {
     const { start, end, days } = weekBounds(baseISO);
     const bucket = which === "next" ? "Próxima semana" : "Esta semana";
 
-    const [weekTasks, planned] = await Promise.all([
+    const [weekTasks, planned, weekHabits] = await Promise.all([
       getWeekTasks(start, end),
       getPlannedTasks(),
+      getWeekHabits(start, end),
     ]);
     const pool = planned.filter((t) => t.plan === bucket);
 
@@ -35,6 +36,7 @@ export async function GET(req: Request) {
       weekDays: days,
       week: weekTasks,
       pool,
+      weekHabits,
     });
   } catch (e: any) {
     return NextResponse.json(

@@ -27,6 +27,7 @@ type PlanData = {
   weekDays: string[];
   week: Task[];
   pool: Task[];
+  weekHabits: Habit[];
 };
 type Habit = {
   id: string;
@@ -34,6 +35,10 @@ type Habit = {
   done: boolean;
   cadence: string | null;
   order: number | null;
+  itemId: string | null;
+  timeOfDay: string | null; // morning / afternoon / night
+  estMin: number | null;
+  planned: string | null; // "Fecha planeada": ISO date or datetime, or null
 };
 type HabitDef = {
   id: string;
@@ -411,12 +416,14 @@ export default function Home() {
     | "assign"
     | "analyze"
     | "time"
+    | "habit"
   >(null);
   const [soonLabel, setSoonLabel] = useState("");
   const [newTask, setNewTask] = useState("");
   const [adding, setAdding] = useState(false);
   const [switching, setSwitching] = useState(false);
   const [activeTask, setActiveTask] = useState<Task | null>(null);
+  const [activeHabit, setActiveHabit] = useState<Habit | null>(null);
   const [taskDetail, setTaskDetail] = useState<TaskDetailData | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -459,10 +466,15 @@ export default function Home() {
   const dragIdRef = useRef<string | null>(null);
   const [dragOverDay, setDragOverDay] = useState<string | null>(null);
   const [dragOverPool, setDragOverPool] = useState(false);
+  // True while a card is being dragged over the Día timeline, so the ephemeral
+  // daypart drop zones appear. Set on dragover (never on dragstart, which would
+  // re-render the dragged element and abort the native drag).
+  const [dayDragging, setDayDragging] = useState(false);
   function endDrag() {
     dragIdRef.current = null;
     setDragOverDay(null);
     setDragOverPool(false);
+    setDayDragging(false);
   }
 
   // Per-day guide times for the Día dayparts (visual anchors, stored on-device).
@@ -477,17 +489,6 @@ export default function Home() {
       setGuides(DEFAULT_GUIDES);
     }
   }, [data?.date]);
-  function setGuide(k: "am" | "noon" | "pm", v: string) {
-    if (!v) return;
-    setGuides((prev) => {
-      const next = { ...prev, [k]: v };
-      try {
-        if (data?.date) localStorage.setItem("cc_guides_" + data.date, JSON.stringify(next));
-      } catch {}
-      return next;
-    });
-  }
-
   const sheetOpenedAt = useRef(0);
 
   useEffect(() => {
@@ -664,6 +665,39 @@ export default function Home() {
     } finally {
       markPending(h.id, false);
     }
+  }
+
+  // Patch a habit check-in in place across every list it may appear in.
+  function patchHabit(id: string, patch: Partial<Habit>) {
+    const f = (x: Habit) => (x.id === id ? { ...x, ...patch } : x);
+    setData((d) => (d ? { ...d, habits: d.habits.map(f) } : d));
+    setPlanData((p) => (p ? { ...p, weekHabits: p.weekHabits.map(f) } : p));
+    setActiveHabit((cur) => (cur && cur.id === id ? { ...cur, ...patch } : cur));
+  }
+
+  // Set (or clear) a check-in's planned date/time ("Fecha planeada").
+  async function saveHabitPlanned(h: Habit, iso: string | null) {
+    patchHabit(h.id, { planned: iso });
+    try {
+      const res = await fetch("/api/checkin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: h.id, planned: iso }),
+      });
+      if (!res.ok) throw new Error();
+    } catch {
+      setError("No se pudo guardar la hora del hábito");
+      patchHabit(h.id, { planned: h.planned });
+    }
+  }
+  // Día: give a daily/other habit a clock time on the viewed day (or clear it).
+  function saveHabitTime(h: Habit, hhmm: string | null) {
+    if (!data) return;
+    saveHabitPlanned(h, hhmm ? buildETDateTime(data.date, hhmm) : null);
+  }
+  // Semana: assign a habit to a day (date only), or clear back to the pool.
+  function saveHabitDay(h: Habit, dayISO: string | null) {
+    saveHabitPlanned(h, dayISO);
   }
 
   async function addTask(e: React.FormEvent) {
@@ -982,6 +1016,11 @@ export default function Home() {
       setError("No se pudo agendar la tarea");
       reloadCurrent();
     }
+  }
+
+  function openHabitSheet(h: Habit) {
+    setActiveHabit(h);
+    setSheet("habit");
   }
 
   // The one task sheet for every tab. Opens with what we know, then fills the
@@ -1366,8 +1405,10 @@ export default function Home() {
                       e.preventDefault();
                       const id = e.dataTransfer.getData("text/plain");
                       const task = planData.week.find((x) => x.id === id);
+                      const hab = (planData.weekHabits ?? []).find((x) => x.id === id);
                       endDrag();
                       if (task) moveTask(task, planData.bucket);
+                      else if (hab && hab.planned) saveHabitDay(hab, null);
                     }}
                   >
                   {(() => {
@@ -1377,7 +1418,12 @@ export default function Home() {
                         (prank[a.priority ?? ""] ?? 3) - (prank[b.priority ?? ""] ?? 3) ||
                         (a.estMin ?? 9999) - (b.estMin ?? 9999)
                     );
-                    const poolMins = sortedPool.reduce((s, t) => s + (t.estMin ?? 0), 0);
+                    // Non-daily habits not yet placed on a day live in the pool too.
+                    const habitPool = (planData.weekHabits ?? []).filter((h) => !h.planned);
+                    const poolMins =
+                      sortedPool.reduce((s, t) => s + (t.estMin ?? 0), 0) +
+                      habitPool.reduce((s, h) => s + (h.estMin ?? 0), 0);
+                    const poolCount = sortedPool.length + habitPool.length;
                     return (
                       <>
                         <div className="section-head" style={{ marginTop: 0 }}>
@@ -1385,11 +1431,11 @@ export default function Home() {
                             {planData.bucket} · por repartir
                           </h3>
                           <span className="count">
-                            {sortedPool.length}
+                            {poolCount}
                             {poolMins ? ` · ≈ ${fmtMin(poolMins)}` : ""}
                           </span>
                         </div>
-                        {sortedPool.length === 0 ? (
+                        {poolCount === 0 ? (
                           <div className="empty">¡Semana repartida! ✦</div>
                         ) : (
                           <div className="list">
@@ -1408,10 +1454,25 @@ export default function Home() {
                                 {renderCard(t)}
                               </div>
                             ))}
+                            {habitPool.map((h) => (
+                              <div
+                                key={h.id}
+                                className="pool-drag"
+                                draggable
+                                onDragStart={(e) => {
+                                  e.dataTransfer.setData("text/plain", h.id);
+                                  e.dataTransfer.effectAllowed = "move";
+                                  dragIdRef.current = h.id;
+                                }}
+                                onDragEnd={endDrag}
+                              >
+                                {renderHabit(h)}
+                              </div>
+                            ))}
                           </div>
                         )}
                         <p className="hint">
-                          Arrastra una tarea a un día para agendarla, o tócala para puntuarla.
+                          Arrastra una tarea o hábito a un día para agendarlo, o tócalo.
                         </p>
                       </>
                     );
@@ -1528,8 +1589,12 @@ export default function Home() {
                           return (a.date ?? "").localeCompare(b.date ?? "");
                         });
                       const dayEvs = eventsForDay(weekEvents, iso);
+                      const dayHabits = (planData.weekHabits ?? []).filter(
+                        (h) => (h.planned ?? "").slice(0, 10) === iso
+                      );
                       const isToday = iso === planData.today;
                       const isSel = iso === sel;
+                      const dayCount = dayTasks.length + dayEvs.length + dayHabits.length;
                       return (
                         <div
                           key={iso}
@@ -1551,18 +1616,19 @@ export default function Home() {
                             const task =
                               planData.pool.find((x) => x.id === id) ??
                               planData.week.find((x) => x.id === id);
+                            const hab = (planData.weekHabits ?? []).find((x) => x.id === id);
                             endDrag();
                             if (task && (task.date ?? "").slice(0, 10) !== iso) {
                               assignTaskToDay(task, iso);
+                            } else if (hab && (hab.planned ?? "").slice(0, 10) !== iso) {
+                              saveHabitDay(hab, iso);
                             }
                           }}
                         >
                           <div className="agenda-head" onClick={() => setSelDay(iso)}>
                             <span className="agenda-dow">{shortDayES(iso)}</span>
                             {isToday && <span className="agenda-today">Hoy</span>}
-                            {dayTasks.length + dayEvs.length > 0 && (
-                              <span className="agenda-n">{dayTasks.length + dayEvs.length}</span>
-                            )}
+                            {dayCount > 0 && <span className="agenda-n">{dayCount}</span>}
                           </div>
                           {dayEvs.map((ev) => (
                             <div
@@ -1582,44 +1648,68 @@ export default function Home() {
                               )}
                             </div>
                           ))}
-                          {dayTasks.length === 0 && dayEvs.length === 0 ? (
+                          {dayCount === 0 ? (
                             <div className="agenda-empty">
                               <Sprout />
                               Libre
                             </div>
                           ) : (
-                            dayTasks.map((t) => {
-                              const start = clockES(t.date ?? "");
-                              const end =
-                                hasTime(t.date) && t.estMin
-                                  ? clockPlusES(t.date ?? "", t.estMin)
-                                  : "";
-                              return (
+                            <>
+                              {dayTasks.map((t) => {
+                                const start = clockES(t.date ?? "");
+                                const end =
+                                  hasTime(t.date) && t.estMin
+                                    ? clockPlusES(t.date ?? "", t.estMin)
+                                    : "";
+                                return (
+                                  <div
+                                    key={t.id}
+                                    className={`agenda-item ${t.status === "Done" ? "done" : ""}`}
+                                    draggable
+                                    onDragStart={(e) => {
+                                      e.dataTransfer.setData("text/plain", t.id);
+                                      e.dataTransfer.effectAllowed = "move";
+                                      dragIdRef.current = t.id;
+                                    }}
+                                    onDragEnd={endDrag}
+                                    onClick={() => openTaskSheet(t)}
+                                  >
+                                    <div className="agenda-item-head">
+                                      <Sprout />
+                                      <span className="agenda-title">{t.title}</span>
+                                    </div>
+                                    {start && (
+                                      <span className="agenda-time">
+                                        {start}
+                                        {end ? ` – ${end}` : ""}
+                                      </span>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                              {dayHabits.map((h) => (
                                 <div
-                                  key={t.id}
-                                  className={`agenda-item ${t.status === "Done" ? "done" : ""}`}
+                                  key={h.id}
+                                  className={`agenda-item agenda-habit ${h.done ? "done" : ""}`}
                                   draggable
                                   onDragStart={(e) => {
-                                    e.dataTransfer.setData("text/plain", t.id);
+                                    e.dataTransfer.setData("text/plain", h.id);
                                     e.dataTransfer.effectAllowed = "move";
-                                    dragIdRef.current = t.id;
+                                    dragIdRef.current = h.id;
                                   }}
                                   onDragEnd={endDrag}
-                                  onClick={() => openTaskSheet(t)}
+                                  onClick={() => openHabitSheet(h)}
                                 >
                                   <div className="agenda-item-head">
-                                    <Sprout />
-                                    <span className="agenda-title">{t.title}</span>
+                                    <CheckMark />
+                                    <span className="agenda-title">{h.title}</span>
                                   </div>
-                                  {start && (
-                                    <span className="agenda-time">
-                                      {start}
-                                      {end ? ` – ${end}` : ""}
-                                    </span>
-                                  )}
+                                  {h.estMin ? (
+                                    <span className="agenda-time">{fmtMin(h.estMin)}</span>
+                                  ) : null}
                                 </div>
-                              );
-                            })
+                              ))}
+                            </>
                           )}
                         </div>
                       );
@@ -1637,13 +1727,47 @@ export default function Home() {
 
       {view === "dia" && (() => {
         const toMin = (hhmm: string) => +hhmm.slice(0, 2) * 60 + +hhmm.slice(3, 5);
-        // Anchors are editable visual guides (not Notion tasks); they take a
-        // place in the timeline at their own time, interleaved with tasks.
-        const anchorDefs = [
-          { key: "am" as const, ico: "☀", label: "Rutina matutina", time: guides.am },
-          { key: "noon" as const, ico: "✦", label: "Almuerzo", time: guides.noon },
-          { key: "pm" as const, ico: "☾", label: "Rutina de noche", time: guides.pm },
-        ];
+        const fmtClock = (min: number) => {
+          const d = new Date(Date.UTC(2000, 0, 1, Math.floor(min / 60), min % 60));
+          return new Intl.DateTimeFormat("es-ES", {
+            hour: "numeric", minute: "2-digit", timeZone: "UTC",
+          }).format(d);
+        };
+        // Fallback duration (min) for habits with no "Tiempo estimado", so they
+        // still take a visible slot when sequenced.
+        const H_FALLBACK = 15;
+        // A habit's "Fecha planeada" lands on the viewed day with a clock time.
+        const plannedHere = (h: Habit) =>
+          !!h.planned && h.planned.includes("T") && etDayOf(h.planned) === data.date;
+
+        const isDailyC = (c: string | null) => (c ?? "").toLowerCase() === "daily";
+        const dayHabits = data.habits;
+        const dailyH = dayHabits.filter((h) => isDailyC(h.cadence));
+        const otherH = dayHabits.filter((h) => !isDailyC(h.cadence));
+        const otherTimed = otherH.filter(plannedHere);
+        const otherUntimed = otherH.filter((h) => !plannedHere(h));
+
+        // Daily habits sit on the timeline, sequenced within their daypart
+        // (morning/afternoon/night) from the daypart's base time, using their
+        // duration — unless one has an explicit planned time, which pins it.
+        const base: Record<string, number> = {
+          morning: toMin(guides.am), afternoon: toMin(guides.noon), night: toMin(guides.pm),
+        };
+        type Placed = { h: Habit; min: number; endMin: number };
+        const placedDaily: Placed[] = [];
+        (["morning", "afternoon", "night"] as const).forEach((k) => {
+          const grp = dailyH
+            .filter((h) => (h.timeOfDay ?? "morning") === k)
+            .sort((a, b) => (a.order ?? 9999) - (b.order ?? 9999));
+          let cursor = base[k];
+          for (const h of grp) {
+            const start = plannedHere(h) ? toMin(timeHHMM_ET(h.planned!)) : cursor;
+            const dur = h.estMin ?? H_FALLBACK;
+            placedDaily.push({ h, min: start, endMin: start + dur });
+            cursor = Math.max(cursor, start) + dur;
+          }
+        });
+
         const untimed = data.tasks.filter((t) => !hasTime(t.date));
         const dayEvs = dayEvents.filter((e) =>
           e.allDay
@@ -1654,14 +1778,10 @@ export default function Home() {
         const timedEvs = dayEvs.filter((e) => !e.allDay);
 
         type Ev =
-          | { kind: "anchor"; id: string; ico: string; label: string; akey: "am" | "noon" | "pm"; min: number; time: string }
           | { kind: "task"; id: string; t: Task; min: number; endMin: number }
-          | { kind: "cal"; id: string; ev: CalEvent; min: number };
+          | { kind: "cal"; id: string; ev: CalEvent; min: number }
+          | { kind: "habit"; id: string; h: Habit; min: number; endMin: number };
         const events: Ev[] = [
-          ...anchorDefs.map((a) => ({
-            kind: "anchor" as const, id: "anchor-" + a.key, ico: a.ico, label: a.label,
-            akey: a.key, time: a.time, min: toMin(a.time),
-          })),
           ...data.tasks.filter((t) => hasTime(t.date)).map((t) => {
             const min = toMin(timeHHMM_ET(t.date!));
             return { kind: "task" as const, id: t.id, t, min, endMin: min + (t.estMin ?? 0) };
@@ -1669,15 +1789,33 @@ export default function Home() {
           ...timedEvs.map((e) => ({
             kind: "cal" as const, id: "cal-" + e.id, ev: e, min: toMin(timeHHMM_ET(e.start)),
           })),
+          ...placedDaily.map((p) => ({
+            kind: "habit" as const, id: p.h.id, h: p.h, min: p.min, endMin: p.endMin,
+          })),
+          ...otherTimed.map((h) => {
+            const min = toMin(timeHHMM_ET(h.planned!));
+            return { kind: "habit" as const, id: h.id, h, min, endMin: min + (h.estMin ?? H_FALLBACK) };
+          }),
         ];
-        // Everything in order by time; on a tie the anchor leads.
-        events.sort((a, b) => a.min - b.min || (a.kind === "anchor" ? -1 : 1));
-        // A task "se solapa" when its duration runs past the next event's start.
+        // Everything in order by time; on a tie, habits lead (routines frame the slot).
+        events.sort((a, b) => a.min - b.min || (a.kind === "habit" ? -1 : 1));
+        // An item "se solapa" when its duration runs past the next event's start.
         const overlaps = new Set<string>();
         events.forEach((e, i) => {
           const next = events[i + 1];
-          if (e.kind === "task" && e.t.estMin && next && e.endMin > next.min) overlaps.add(e.id);
+          const end = e.kind === "cal" ? undefined : e.endMin;
+          const hasDur = e.kind === "task" ? !!e.t.estMin : e.kind === "habit" ? !!e.h.estMin : false;
+          if (hasDur && end != null && next && end > next.min) overlaps.add(e.id);
         });
+
+        // Drop an untimed task or habit onto a daypart to give it that base time.
+        const dropOnDaypart = (id: string, k: "am" | "noon" | "pm") => {
+          const hhmm = guides[k];
+          const task = data.tasks.find((x) => x.id === id);
+          if (task) { saveTime(task, hhmm); return; }
+          const hab = data.habits.find((x) => x.id === id);
+          if (hab) saveHabitTime(hab, hhmm);
+        };
 
         return (
           <section className="section" style={{ marginTop: 22 }}>
@@ -1729,12 +1867,17 @@ export default function Home() {
               })}
             </div>
 
-            <div className="day-cols">
+            <div
+              className="day-cols"
+              onDragOver={() => {
+                if (dragIdRef.current && !dayDragging) setDayDragging(true);
+              }}
+            >
             <div className="day-pool">
               <h3 className="bucket-title" style={{ margin: 0 }}>
                 Sin hora
               </h3>
-              {untimed.length === 0 ? (
+              {untimed.length === 0 && otherUntimed.length === 0 ? (
                 <div className="empty">Todo tiene hora ✦</div>
               ) : (
                 <div className="list">
@@ -1753,11 +1896,26 @@ export default function Home() {
                       {renderCard(t)}
                     </div>
                   ))}
+                  {otherUntimed.map((h) => (
+                    <div
+                      key={h.id}
+                      className="pool-drag"
+                      draggable
+                      onDragStart={(ev) => {
+                        ev.dataTransfer.setData("text/plain", h.id);
+                        ev.dataTransfer.effectAllowed = "move";
+                        dragIdRef.current = h.id;
+                      }}
+                      onDragEnd={endDrag}
+                    >
+                      {renderHabit(h)}
+                    </div>
+                  ))}
                 </div>
               )}
               <p className="hint">
-                Arrastra una tarea a una franja (mañana · almuerzo · noche) para darle hora, o
-                tócala.
+                Arrastra a una franja (mañana · tarde · noche) para darle hora. Los hábitos
+                no-diarios (Gimnasio, Job Hunting…) viven aquí hasta que les des un momento.
               </p>
             </div>
 
@@ -1777,39 +1935,39 @@ export default function Home() {
               </div>
             )}
 
+            {/* ephemeral daypart drop zones — only while dragging */}
+            {dayDragging && (
+              <div className="daypart-zones">
+                {([["am", "☀", "Mañana"], ["noon", "✦", "Tarde"], ["pm", "☾", "Noche"]] as const).map(
+                  ([k, ico, label]) => (
+                    <div
+                      key={k}
+                      className={`daypart-zone ${dragOverDay === k ? "drag-over" : ""}`}
+                      onDragOver={(ev) => {
+                        if (!dragIdRef.current) return;
+                        ev.preventDefault();
+                        ev.dataTransfer.dropEffect = "move";
+                        if (dragOverDay !== k) setDragOverDay(k);
+                      }}
+                      onDrop={(ev) => {
+                        ev.preventDefault();
+                        const id = ev.dataTransfer.getData("text/plain");
+                        endDrag();
+                        dropOnDaypart(id, k);
+                      }}
+                    >
+                      <span className="daypart-ico">{ico}</span>
+                      {label}
+                      <span className="daypart-zone-time">{guides[k]}</span>
+                    </div>
+                  )
+                )}
+              </div>
+            )}
+
             <div className="dayflow">
               {events.map((e) =>
-                e.kind === "anchor" ? (
-                  <div
-                    className={`daypart ${dragOverDay === e.akey ? "drag-over" : ""}`}
-                    key={e.id}
-                    onDragOver={(ev) => {
-                      if (!dragIdRef.current) return;
-                      ev.preventDefault();
-                      ev.dataTransfer.dropEffect = "move";
-                      if (dragOverDay !== e.akey) setDragOverDay(e.akey);
-                    }}
-                    onDrop={(ev) => {
-                      ev.preventDefault();
-                      const id = ev.dataTransfer.getData("text/plain");
-                      const task = data.tasks.find((x) => x.id === id);
-                      endDrag();
-                      if (task) saveTime(task, e.time);
-                    }}
-                  >
-                    <span className="daypart-name">
-                      <span className="daypart-ico">{e.ico}</span>
-                      {e.label}
-                    </span>
-                    <input
-                      type="time"
-                      className="daypart-time"
-                      value={e.time}
-                      onChange={(ev) => setGuide(e.akey, ev.target.value)}
-                      aria-label={`Hora de ${e.label}`}
-                    />
-                  </div>
-                ) : e.kind === "cal" ? (
+                e.kind === "cal" ? (
                   <div className="dayblock calblock" key={e.id} onClick={() => openEventSheet(e.ev)}>
                     <div className="dayblock-time">
                       {clockES(e.ev.start)}
@@ -1820,6 +1978,39 @@ export default function Home() {
                       <span className="dayblock-title">{e.ev.title}</span>
                     </div>
                   </div>
+                ) : e.kind === "habit" ? (
+                  (() => {
+                    const h = e.h;
+                    return (
+                      <div
+                        key={e.id}
+                        className={`dayblock habitblock ${h.done ? "done" : ""} ${
+                          overlaps.has(e.id) ? "overlap" : ""
+                        }`}
+                      >
+                        <div className="dayblock-time">
+                          {fmtClock(e.min)}
+                          {h.estMin ? <span className="dayblock-end">{fmtClock(e.endMin)}</span> : null}
+                        </div>
+                        <div className="dayblock-body">
+                          <span
+                            className="habit-check"
+                            onClick={(ev) => {
+                              ev.stopPropagation();
+                              toggleHabit(h);
+                            }}
+                          >
+                            <CheckMark />
+                          </span>
+                          <span className="dayblock-title" onClick={() => openHabitSheet(h)}>
+                            {h.title}
+                          </span>
+                          {h.estMin ? <span className="agenda-time">{fmtMin(h.estMin)}</span> : null}
+                          {overlaps.has(e.id) && <span className="overlap-tag">se solapa</span>}
+                        </div>
+                      </div>
+                    );
+                  })()
                 ) : (
                   (() => {
                     const t = e.t;
@@ -1851,8 +2042,8 @@ export default function Home() {
             </div>
 
             <p className="hint">
-              Todo va en orden por hora; las anclas se mueven contigo. La duración marca cuándo
-              una tarea se solapa con lo siguiente.
+              Tus hábitos diarios se acomodan por franja usando su duración, para ver el tiempo
+              real del día. Toca uno para cambiar su hora; arrastra para moverlo.
             </p>
             </div>
             </div>
@@ -2312,6 +2503,56 @@ export default function Home() {
                   ))}
               </>
             )}
+            {sheet === "habit" && activeHabit && (() => {
+              const live =
+                (data?.habits ?? []).find((x) => x.id === activeHabit.id) ??
+                (planData?.weekHabits ?? []).find((x) => x.id === activeHabit.id) ??
+                activeHabit;
+              const hhmm =
+                live.planned && live.planned.includes("T") ? timeHHMM_ET(live.planned) : "";
+              const daily = (live.cadence ?? "").toLowerCase() === "daily";
+              return (
+                <>
+                  <h3 className="sheet-title serif">{live.title}</h3>
+                  {live.cadence && (
+                    <p className="hint" style={{ marginTop: 0, marginBottom: 10 }}>
+                      {cadenceES(live.cadence)}
+                      {live.estMin ? ` · ${fmtMin(live.estMin)}` : ""}
+                    </p>
+                  )}
+                  <button
+                    className={`btn ${live.done ? "btn-ghost" : ""}`}
+                    style={{ width: "100%", marginTop: 4, marginBottom: 10 }}
+                    onClick={() => toggleHabit(live)}
+                  >
+                    {live.done ? "Marcar como no hecho" : "Marcar como hecho ✓"}
+                  </button>
+                  <div className="q">
+                    <div className="q-label">Hora</div>
+                    <div className="chips" style={{ alignItems: "center" }}>
+                      <input
+                        type="time"
+                        className="time-input"
+                        value={hhmm}
+                        onChange={(e) =>
+                          saveHabitTime(live, e.target.value ? e.target.value : null)
+                        }
+                      />
+                      {hhmm && (
+                        <button className="chip" onClick={() => saveHabitTime(live, null)}>
+                          Quitar hora
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <p className="hint">
+                    {daily
+                      ? "Si no le das hora propia, se acomoda solo en su franja usando su duración."
+                      : "Dale una hora para verlo en tu día; si no, vive en “Sin hora”."}
+                  </p>
+                </>
+              );
+            })()}
             {sheet === "task" && activeTask && (() => {
               const live =
                 (data?.tasks ?? []).find((x) => x.id === activeTask.id) ??
