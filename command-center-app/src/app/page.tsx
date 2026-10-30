@@ -658,9 +658,9 @@ export default function Home() {
     if (pending.has(h.id)) return;
     markPending(h.id, true);
     const nextDone = !h.done;
-    setData((d) =>
-      d ? { ...d, habits: d.habits.map((x) => (x.id === h.id ? { ...x, done: nextDone } : x)) } : d
-    );
+    // Patch everywhere the check-in may live: today's list, the weekly planner,
+    // and the open habit sheet.
+    patchHabit(h.id, { done: nextDone });
     try {
       const res = await fetch("/api/checkin", {
         method: "POST",
@@ -669,9 +669,7 @@ export default function Home() {
       });
       if (!res.ok) throw new Error();
     } catch {
-      setData((d) =>
-        d ? { ...d, habits: d.habits.map((x) => (x.id === h.id ? { ...x, done: h.done } : x)) } : d
-      );
+      patchHabit(h.id, { done: h.done });
       setError("No se pudo guardar el hábito");
     } finally {
       markPending(h.id, false);
@@ -1720,7 +1718,15 @@ export default function Home() {
                                   onClick={() => openHabitSheet(h)}
                                 >
                                   <div className="agenda-item-head">
-                                    <CheckMark />
+                                    <span
+                                      className="habit-check"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        toggleHabit(h);
+                                      }}
+                                    >
+                                      <CheckMark />
+                                    </span>
                                     <span className="agenda-title">{h.title}</span>
                                   </div>
                                   {h.estMin ? (
