@@ -400,9 +400,10 @@ export default function Home() {
   const [planWeek, setPlanWeek] = useState<"this" | "next">("this");
   // Focused day in the weekly agenda (Semana); null = default to today/first.
   const [selDay, setSelDay] = useState<string | null>(null);
-  // Drag & drop: a pool card being dragged, and the day it's hovering over.
+  // Drag & drop: the task being dragged, the day it's over, or the pool.
   const [dragId, setDragId] = useState<string | null>(null);
   const [dragOverDay, setDragOverDay] = useState<string | null>(null);
+  const [dragOverPool, setDragOverPool] = useState(false);
 
   // Per-day guide times for the Día dayparts (visual anchors, stored on-device).
   const [guides, setGuides] = useState(DEFAULT_GUIDES);
@@ -665,6 +666,17 @@ export default function Home() {
   // Move to a planning bucket (clears the date).
   async function moveTask(t: Task, plan: string) {
     applyPatch(t.id, { plan, date: null });
+    // Optimistically reflect the move in the weekly view (e.g. day -> pool).
+    setPlanData((pd) => {
+      if (!pd) return pd;
+      const found = pd.week.find((x) => x.id === t.id) ?? pd.pool.find((x) => x.id === t.id);
+      if (!found) return pd;
+      const updated = { ...found, plan, date: null };
+      const week = pd.week.filter((x) => x.id !== t.id);
+      let pool = pd.pool.filter((x) => x.id !== t.id);
+      if (plan === pd.bucket) pool = [...pool, updated];
+      return { ...pd, week, pool };
+    });
     try {
       const res = await fetch("/api/task", {
         method: "POST",
@@ -1181,7 +1193,27 @@ export default function Home() {
               const selIdx = planData.weekDays.indexOf(sel);
               return (
                 <>
-                  <div className="plan-pool">
+                  <div
+                    className={`plan-pool ${dragId ? "dnd" : ""} ${
+                      dragOverPool ? "drag-over-pool" : ""
+                    }`}
+                    onDragOver={(e) => {
+                      if (!dragId) return;
+                      e.preventDefault();
+                      e.dataTransfer.dropEffect = "move";
+                      if (!dragOverPool) setDragOverPool(true);
+                    }}
+                    onDragLeave={() => setDragOverPool(false)}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      const id = e.dataTransfer.getData("text/plain");
+                      const task = planData.week.find((x) => x.id === id);
+                      setDragId(null);
+                      setDragOverDay(null);
+                      setDragOverPool(false);
+                      if (task) moveTask(task, planData.bucket);
+                    }}
+                  >
                   {(() => {
                     const prank: Record<string, number> = { High: 0, Medium: 1, Low: 2 };
                     const sortedPool = [...planData.pool].sort(
@@ -1218,6 +1250,7 @@ export default function Home() {
                                 onDragEnd={() => {
                                   setDragId(null);
                                   setDragOverDay(null);
+                                  setDragOverPool(false);
                                 }}
                               >
                                 {renderCard(t)}
@@ -1362,10 +1395,14 @@ export default function Home() {
                           onDrop={(e) => {
                             e.preventDefault();
                             const id = e.dataTransfer.getData("text/plain");
-                            const task = planData.pool.find((x) => x.id === id);
+                            const task =
+                              planData.pool.find((x) => x.id === id) ??
+                              planData.week.find((x) => x.id === id);
                             setDragId(null);
                             setDragOverDay(null);
-                            if (task) assignTaskToDay(task, iso);
+                            if (task && (task.date ?? "").slice(0, 10) !== iso) {
+                              assignTaskToDay(task, iso);
+                            }
                           }}
                         >
                           <div className="agenda-head" onClick={() => setSelDay(iso)}>
@@ -1390,7 +1427,20 @@ export default function Home() {
                               return (
                                 <div
                                   key={t.id}
-                                  className={`agenda-item ${t.status === "Done" ? "done" : ""}`}
+                                  className={`agenda-item ${t.status === "Done" ? "done" : ""} ${
+                                    dragId === t.id ? "dragging" : ""
+                                  }`}
+                                  draggable
+                                  onDragStart={(e) => {
+                                    e.dataTransfer.setData("text/plain", t.id);
+                                    e.dataTransfer.effectAllowed = "move";
+                                    setDragId(t.id);
+                                  }}
+                                  onDragEnd={() => {
+                                    setDragId(null);
+                                    setDragOverDay(null);
+                                    setDragOverPool(false);
+                                  }}
                                   onClick={() => openTaskSheet(t)}
                                 >
                                   <div className="agenda-item-head">

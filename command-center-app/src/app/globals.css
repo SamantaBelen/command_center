@@ -1528,6 +1528,15 @@ textarea,
 .agenda.dnd .agenda-day * {
   pointer-events: none;
 }
+/* the pool is also a drop target — drag a scheduled task back to it */
+.plan-pool.dnd * {
+  pointer-events: none;
+}
+.plan-pool.drag-over-pool {
+  border-radius: 14px;
+  box-shadow: inset 0 0 0 2px var(--burgundy-soft);
+  background: rgba(110, 43, 58, 0.05);
+}
 
 /* Semana columns — mobile stacks them: toggle, balance, pool, agenda */
 .plan-cols {
