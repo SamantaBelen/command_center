@@ -1763,10 +1763,18 @@ export default function Home() {
         const dayHabits = data.habits;
         const dailyH = dayHabits.filter((h) => isDailyC(h.cadence));
         const otherH = dayHabits.filter((h) => !isDailyC(h.cadence));
+        const plannedDay = (h: Habit) => (h.planned ?? "").slice(0, 10);
         const otherTimed = otherH.filter(plannedHere);
-        // Done habits drop out of "Sin hora" — no need to still plan them.
+        // "Sin hora" shows non-daily, not-done habits that are either unassigned
+        // or assigned to THIS day (so one assigned to another day only shows
+        // there). Done habits drop out — no need to still plan them.
         const otherUntimed = otherH
-          .filter((h) => !plannedHere(h) && !h.done)
+          .filter(
+            (h) =>
+              !plannedHere(h) &&
+              !h.done &&
+              (plannedDay(h) === "" || plannedDay(h) === data.date)
+          )
           .sort(byCadence);
 
         // Daily habits sit on the timeline, sequenced within their daypart
