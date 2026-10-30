@@ -1429,9 +1429,10 @@ export default function Home() {
                         (prank[a.priority ?? ""] ?? 3) - (prank[b.priority ?? ""] ?? 3) ||
                         (a.estMin ?? 9999) - (b.estMin ?? 9999)
                     );
-                    // Non-daily habits not yet placed on a day live in the pool too.
+                    // Non-daily habits not yet placed on a day (and not done)
+                    // live in the pool too.
                     const habitPool = (planData.weekHabits ?? [])
-                      .filter((h) => !h.planned)
+                      .filter((h) => !h.planned && !h.done)
                       .sort(byCadence);
                     const poolMins =
                       sortedPool.reduce((s, t) => s + (t.estMin ?? 0), 0) +
@@ -1758,7 +1759,10 @@ export default function Home() {
         const dailyH = dayHabits.filter((h) => isDailyC(h.cadence));
         const otherH = dayHabits.filter((h) => !isDailyC(h.cadence));
         const otherTimed = otherH.filter(plannedHere);
-        const otherUntimed = otherH.filter((h) => !plannedHere(h)).sort(byCadence);
+        // Done habits drop out of "Sin hora" — no need to still plan them.
+        const otherUntimed = otherH
+          .filter((h) => !plannedHere(h) && !h.done)
+          .sort(byCadence);
 
         // Daily habits sit on the timeline, sequenced within their daypart
         // (morning/afternoon/night) from the daypart's base time, using their
