@@ -137,6 +137,17 @@ const CADENCE_ES: Record<string, string> = {
 const cadenceES = (c: string | null) =>
   c ? CADENCE_ES[c.toLowerCase()] ?? c : "";
 
+// Order habits by cadence (Daily→Weekly→Monthly→Bimonthly→Yearly), then by
+// their own Order, then title — used in the Día "Sin hora" and Semana pools.
+const CAD_RANK: Record<string, number> = {
+  daily: 0, weekly: 1, monthly: 2, bimonthly: 3, yearly: 4,
+};
+const byCadence = (a: Habit, b: Habit) =>
+  (CAD_RANK[(a.cadence ?? "").toLowerCase()] ?? 9) -
+    (CAD_RANK[(b.cadence ?? "").toLowerCase()] ?? 9) ||
+  (a.order ?? 9999) - (b.order ?? 9999) ||
+  a.title.localeCompare(b.title);
+
 const TOD_ES: Record<string, { label: string; ico: string }> = {
   morning: { label: "Mañana", ico: "☀" },
   afternoon: { label: "Tarde", ico: "✦" },
@@ -1419,7 +1430,9 @@ export default function Home() {
                         (a.estMin ?? 9999) - (b.estMin ?? 9999)
                     );
                     // Non-daily habits not yet placed on a day live in the pool too.
-                    const habitPool = (planData.weekHabits ?? []).filter((h) => !h.planned);
+                    const habitPool = (planData.weekHabits ?? [])
+                      .filter((h) => !h.planned)
+                      .sort(byCadence);
                     const poolMins =
                       sortedPool.reduce((s, t) => s + (t.estMin ?? 0), 0) +
                       habitPool.reduce((s, h) => s + (h.estMin ?? 0), 0);
@@ -1745,7 +1758,7 @@ export default function Home() {
         const dailyH = dayHabits.filter((h) => isDailyC(h.cadence));
         const otherH = dayHabits.filter((h) => !isDailyC(h.cadence));
         const otherTimed = otherH.filter(plannedHere);
-        const otherUntimed = otherH.filter((h) => !plannedHere(h));
+        const otherUntimed = otherH.filter((h) => !plannedHere(h)).sort(byCadence);
 
         // Daily habits sit on the timeline, sequenced within their daypart
         // (morning/afternoon/night) from the daypart's base time, using their
