@@ -1429,10 +1429,15 @@ export default function Home() {
                         (prank[a.priority ?? ""] ?? 3) - (prank[b.priority ?? ""] ?? 3) ||
                         (a.estMin ?? 9999) - (b.estMin ?? 9999)
                     );
-                    // Non-daily habits not yet placed on a day (and not done)
-                    // live in the pool too.
+                    // Non-daily habits that aren't placed on a day of THIS week
+                    // (no planned date, or one that falls outside the shown week)
+                    // and aren't done live in the pool, ready to be assigned.
                     const habitPool = (planData.weekHabits ?? [])
-                      .filter((h) => !h.planned && !h.done)
+                      .filter(
+                        (h) =>
+                          !h.done &&
+                          !planData.weekDays.includes((h.planned ?? "").slice(0, 10))
+                      )
                       .sort(byCadence);
                     const poolMins =
                       sortedPool.reduce((s, t) => s + (t.estMin ?? 0), 0) +
