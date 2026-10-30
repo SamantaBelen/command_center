@@ -6,8 +6,13 @@ For each active habit, ensures the current period has exactly `Target`
 check-in rows. Creates `Target - existing` rows per run, so every run is
 safe to repeat: a crash, retry, or missed day self-heals on the next run.
 
-Runs all four cadences every day. The Period key makes off-day cadences
-(Weekly/Monthly/Yearly) no-ops except the first run of each period.
+Runs all cadences every day. The Period key makes off-day cadences
+(Weekly/Monthly/Yearly/Bimonthly) no-ops except the first run of each period.
+
+Daily habits are generated for every remaining day of the current ISO week
+(today through Sunday), not just today. So Monday's run seeds the whole week
+and the app's Día view can show each upcoming day's habits ahead of time;
+later days in the week re-run as no-ops (same Period key = idempotent).
 
 Requires env var: NOTION_TOKEN  (scoped internal integration token,
 shared with BOTH databases below).
@@ -186,24 +191,43 @@ def create_checkin(habit, cadence, key, start, end):
 
 
 # --- Main -------------------------------------------------------------------
+def week_remaining_days(today):
+    """Today through the Sunday that ends today's ISO week (Mon=0 .. Sun=6)."""
+    sunday = today + datetime.timedelta(days=6 - today.weekday())
+    days, d = [], today
+    while d <= sunday:
+        days.append(d)
+        d += datetime.timedelta(days=1)
+    return days
+
+
 def main():
     today = datetime.datetime.now(EASTERN).date()
     created_total = 0
 
     for cadence in CADENCES:
-        key = period_key(cadence, today)
-        start, end = period_bounds(cadence, today)
-        for habit in active_habits(cadence):
-            name = habit_name(habit)
-            target = habit_target(habit)
-            have = existing_count(habit["id"], key)
-            need = max(0, target - have)
+        habits = active_habits(cadence)
+        # Daily: ensure every remaining day of the week exists; other cadences:
+        # just the current period. Each (habit, Period) pair is deduped, so
+        # re-running any day is safe.
+        if cadence == "Daily":
+            periods = [(d.isoformat(), d, d) for d in week_remaining_days(today)]
+        else:
+            start, end = period_bounds(cadence, today)
+            periods = [(period_key(cadence, today), start, end)]
 
-            for _ in range(need):
-                create_checkin(habit, cadence, key, start, end)
-                created_total += 1
+        for key, start, end in periods:
+            for habit in habits:
+                name = habit_name(habit)
+                target = habit_target(habit)
+                have = existing_count(habit["id"], key)
+                need = max(0, target - have)
 
-            print(f"[{cadence} {key}] {name}: target={target} had={have} created={need}")
+                for _ in range(need):
+                    create_checkin(habit, cadence, key, start, end)
+                    created_total += 1
+
+                print(f"[{cadence} {key}] {name}: target={target} had={have} created={need}")
 
     print(f"Done. Created {created_total} check-in(s) as of {today.isoformat()}.")
 

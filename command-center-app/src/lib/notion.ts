@@ -37,6 +37,10 @@ export type Habit = {
   done: boolean;
   cadence: string | null;
   order: number | null;
+  itemId: string | null; // the related Habit definition's page id
+  timeOfDay: string | null; // morning / afternoon / night (from the habit)
+  estMin: number | null; // estimated minutes (from the habit)
+  planned: string | null; // "Fecha planeada": ISO date or datetime, or null
 };
 
 // A habit definition (from the Habits database), for the Perfil view.
@@ -166,38 +170,101 @@ export async function getTasks(dateISO: string, includeOverdue: boolean): Promis
   return tasks;
 }
 
-// Check-ins whose period contains the given day: Period start <= day <= Period end.
-export async function getHabits(dateISO: string): Promise<Habit[]> {
+// Per-habit extras (Time of Day, estimated minutes) keyed by the habit page id,
+// so check-ins can be enriched with fields that live on the Habit definition.
+async function loadHabitMaps(): Promise<{
+  est: Map<string, number | null>;
+  tod: Map<string, string | null>;
+}> {
   const res = await notion.databases.query({
-    database_id: CHECKINS_DB,
-    filter: {
-      and: [
-        { property: "Period start", date: { on_or_before: dateISO } },
-        { property: "Period end", date: { on_or_after: dateISO } },
-      ],
-    },
+    database_id: HABITS_DB,
     page_size: 200,
   });
+  const est = new Map<string, number | null>();
+  const tod = new Map<string, string | null>();
+  for (const p of res.results as any[]) {
+    const props = p.properties ?? {};
+    est.set(p.id, props["Tiempo estimado (min)"]?.number ?? null);
+    tod.set(p.id, props["Time of Day"]?.select?.name ?? null);
+  }
+  return { est, tod };
+}
 
-  const habits = res.results.map((page: any) => {
-    const props = page.properties ?? {};
-    return {
-      id: page.id,
-      title: plainTitle(props["Log"]) || "(sin título)",
-      done: props["Done"]?.checkbox ?? false,
-      cadence: props["Cadence"]?.select?.name ?? null,
-      order: props["Order"]?.number ?? null,
-    };
-  });
+function mapCheckin(
+  page: any,
+  maps: { est: Map<string, number | null>; tod: Map<string, string | null> }
+): Habit {
+  const props = page.properties ?? {};
+  const itemId = props["Item"]?.relation?.[0]?.id ?? null;
+  return {
+    id: page.id,
+    title: plainTitle(props["Log"]) || "(sin título)",
+    done: props["Done"]?.checkbox ?? false,
+    cadence: props["Cadence"]?.select?.name ?? null,
+    order: props["Order"]?.number ?? null,
+    itemId,
+    timeOfDay: (itemId && maps.tod.get(itemId)) ?? null,
+    estMin: (itemId && maps.est.get(itemId)) ?? null,
+    planned: props["Fecha planeada"]?.date?.start ?? null,
+  };
+}
 
+function sortHabits(habits: Habit[]): Habit[] {
   habits.sort((a, b) => {
     const ao = a.order ?? 9999;
     const bo = b.order ?? 9999;
     if (ao !== bo) return ao - bo;
     return a.title.localeCompare(b.title);
   });
-
   return habits;
+}
+
+// Check-ins whose period contains the given day: Period start <= day <= Period end.
+export async function getHabits(dateISO: string): Promise<Habit[]> {
+  const [res, maps] = await Promise.all([
+    notion.databases.query({
+      database_id: CHECKINS_DB,
+      filter: {
+        and: [
+          { property: "Period start", date: { on_or_before: dateISO } },
+          { property: "Period end", date: { on_or_after: dateISO } },
+        ],
+      },
+      page_size: 200,
+    }),
+    loadHabitMaps(),
+  ]);
+  return sortHabits(res.results.map((p: any) => mapCheckin(p, maps)));
+}
+
+// Non-daily check-ins whose period overlaps [startISO, endISO] — for the weekly
+// planner's "por repartir" pool and day placement.
+export async function getWeekHabits(startISO: string, endISO: string): Promise<Habit[]> {
+  const [res, maps] = await Promise.all([
+    notion.databases.query({
+      database_id: CHECKINS_DB,
+      filter: {
+        and: [
+          { property: "Period start", date: { on_or_before: endISO } },
+          { property: "Period end", date: { on_or_after: startISO } },
+          { property: "Cadence", select: { does_not_equal: "Daily" } },
+        ],
+      },
+      page_size: 200,
+    }),
+    loadHabitMaps(),
+  ]);
+  return sortHabits(res.results.map((p: any) => mapCheckin(p, maps)));
+}
+
+// Set (or clear) a check-in's "Fecha planeada". iso may be a date or datetime;
+// null clears it (back to unscheduled). This field is independent of "Date",
+// which the native "Done → Date" automation manages.
+export async function setCheckinPlanned(id: string, iso: string | null): Promise<void> {
+  await notion.pages.update({
+    page_id: id,
+    properties: { "Fecha planeada": { date: iso ? { start: iso } : null } },
+  });
 }
 
 // All habit definitions (active and inactive) for the Perfil view.
