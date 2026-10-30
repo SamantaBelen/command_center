@@ -54,6 +54,7 @@ type CalEvent = {
   start: string; // ISO datetime, or "YYYY-MM-DD" for all-day
   end: string;
   allDay: boolean;
+  htmlLink?: string;
 };
 type Data = { today: string; date: string; tasks: Task[]; habits: Habit[] };
 type TaskDetailData = {
@@ -398,6 +399,7 @@ export default function Home() {
     | "habits"
     | "add"
     | "addhabit"
+    | "event"
     | "soon"
     | "task"
     | "plan"
@@ -435,6 +437,17 @@ export default function Home() {
   // Google Calendar events for the current day / week.
   const [dayEvents, setDayEvents] = useState<CalEvent[]>([]);
   const [weekEvents, setWeekEvents] = useState<CalEvent[]>([]);
+  // Event editor sheet.
+  const [editEventId, setEditEventId] = useState<string | null>(null);
+  const [evTitle, setEvTitle] = useState("");
+  const [evDay, setEvDay] = useState("");
+  const [evAllDay, setEvAllDay] = useState(false);
+  const [evStart, setEvStart] = useState("09:00");
+  const [evEnd, setEvEnd] = useState("10:00");
+  const [evLink, setEvLink] = useState<string | null>(null);
+  const [savingEvent, setSavingEvent] = useState(false);
+  const [evConfirmDelete, setEvConfirmDelete] = useState(false);
+  const [fabOpen, setFabOpen] = useState(false);
   // Focused day in the weekly agenda (Semana); null = default to today/first.
   const [selDay, setSelDay] = useState<string | null>(null);
   // Drag & drop. The dragged id lives in a ref so starting a drag doesn't
@@ -714,6 +727,93 @@ export default function Home() {
     } catch {
       setError("No se pudo cambiar el estado");
       reloadCurrent();
+    }
+  }
+
+  // --- Google Calendar events: refetch, open editor, save, delete ---
+  function reloadCalendar() {
+    if (data?.date) {
+      fetch(`/api/calendar?start=${data.date}&end=${data.date}`, { cache: "no-store" })
+        .then((r) => (r.ok ? r.json() : { events: [] }))
+        .then((j) => setDayEvents(j.events ?? []))
+        .catch(() => {});
+    }
+    if (planData) {
+      fetch(`/api/calendar?start=${planData.weekStart}&end=${planData.weekEnd}`, {
+        cache: "no-store",
+      })
+        .then((r) => (r.ok ? r.json() : { events: [] }))
+        .then((j) => setWeekEvents(j.events ?? []))
+        .catch(() => {});
+    }
+  }
+  function openEventSheet(ev: CalEvent) {
+    setEditEventId(ev.id);
+    setEvTitle(ev.title);
+    setEvAllDay(ev.allDay);
+    setEvDay(ev.allDay ? ev.start.slice(0, 10) : etDayOf(ev.start));
+    setEvStart(ev.allDay ? "09:00" : timeHHMM_ET(ev.start));
+    setEvEnd(ev.allDay ? "10:00" : timeHHMM_ET(ev.end));
+    setEvLink(ev.htmlLink ?? null);
+    setEvConfirmDelete(false);
+    setSheet("event");
+  }
+  function openNewEvent(dayISO?: string) {
+    setEditEventId(null);
+    setEvTitle("");
+    setEvAllDay(false);
+    setEvDay(dayISO ?? data?.date ?? data?.today ?? "");
+    setEvStart("09:00");
+    setEvEnd("10:00");
+    setEvLink(null);
+    setEvConfirmDelete(false);
+    setFabOpen(false);
+    setSheet("event");
+  }
+  async function saveEvent(e: React.FormEvent) {
+    e.preventDefault();
+    const title = evTitle.trim();
+    if (!title || savingEvent || !evDay) return;
+    setSavingEvent(true);
+    try {
+      const res = await fetch("/api/calendar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          op: editEventId ? "update" : "create",
+          id: editEventId ?? undefined,
+          title,
+          dayISO: evDay,
+          allDay: evAllDay,
+          startTime: evAllDay ? null : evStart,
+          endTime: evAllDay ? null : evEnd,
+        }),
+      });
+      if (!res.ok) throw new Error();
+      setSheet(null);
+      reloadCalendar();
+    } catch {
+      setError("No se pudo guardar el evento");
+    } finally {
+      setSavingEvent(false);
+    }
+  }
+  async function removeEvent() {
+    if (!editEventId || savingEvent) return;
+    setSavingEvent(true);
+    try {
+      const res = await fetch("/api/calendar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ op: "delete", id: editEventId }),
+      });
+      if (!res.ok) throw new Error();
+      setSheet(null);
+      reloadCalendar();
+    } catch {
+      setError("No se pudo borrar el evento");
+    } finally {
+      setSavingEvent(false);
     }
   }
 
@@ -1461,7 +1561,11 @@ export default function Home() {
                             )}
                           </div>
                           {dayEvs.map((ev) => (
-                            <div key={ev.id} className={`cal-event ${ev.allDay ? "allday" : ""}`}>
+                            <div
+                              key={ev.id}
+                              className={`cal-event ${ev.allDay ? "allday" : ""}`}
+                              onClick={() => openEventSheet(ev)}
+                            >
                               <div className="agenda-item-head">
                                 <CalGlyph />
                                 <span className="agenda-title">{ev.title}</span>
@@ -1583,10 +1687,14 @@ export default function Home() {
             {allDayEvs.length > 0 && (
               <div className="allday-row">
                 {allDayEvs.map((ev) => (
-                  <span key={ev.id} className="allday-chip">
+                  <button
+                    key={ev.id}
+                    className="allday-chip"
+                    onClick={() => openEventSheet(ev)}
+                  >
                     <CalGlyph />
                     {ev.title}
-                  </span>
+                  </button>
                 ))}
               </div>
             )}
@@ -1608,7 +1716,7 @@ export default function Home() {
                     />
                   </div>
                 ) : e.kind === "cal" ? (
-                  <div className="dayblock calblock" key={e.id}>
+                  <div className="dayblock calblock" key={e.id} onClick={() => openEventSheet(e.ev)}>
                     <div className="dayblock-time">
                       {clockES(e.ev.start)}
                       {clockES(e.ev.end) && <span className="dayblock-end">{clockES(e.ev.end)}</span>}
@@ -1820,11 +1928,44 @@ export default function Home() {
         );
       })()}
 
-      {/* add task / add habit */}
+      {/* add task / event / habit */}
+      {(view === "dia" || view === "planear") && fabOpen && (
+        <>
+          <div className="fab-scrim" onClick={() => setFabOpen(false)} />
+          <div className="fab-menu">
+            <button
+              className="fab-opt"
+              onClick={() => {
+                setFabOpen(false);
+                setSheet("add");
+              }}
+            >
+              <span className="fab-opt-ico">✓</span>
+              Nueva tarea
+            </button>
+            <button className="fab-opt" onClick={() => openNewEvent()}>
+              <span className="fab-opt-ico cal">
+                <CalGlyph />
+              </span>
+              Nuevo evento
+            </button>
+          </div>
+        </>
+      )}
       <button
-        className="fab"
-        aria-label={view === "perfil" ? "Añadir hábito" : "Añadir tarea"}
-        onClick={() => (view === "perfil" ? openAddHabit() : setSheet("add"))}
+        className={`fab ${fabOpen ? "fab-x" : ""}`}
+        aria-label={
+          view === "perfil"
+            ? "Añadir hábito"
+            : view === "dia" || view === "planear"
+            ? "Añadir"
+            : "Añadir tarea"
+        }
+        onClick={() => {
+          if (view === "perfil") openAddHabit();
+          else if (view === "dia" || view === "planear") setFabOpen((v) => !v);
+          else setSheet("add");
+        }}
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
           <path d="M12 5v14M5 12h14" />
@@ -1976,6 +2117,112 @@ export default function Home() {
                     {addingHabit ? "Guardando…" : "Añadir hábito"}
                   </button>
                 </form>
+              </>
+            )}
+            {sheet === "event" && (
+              <>
+                <h3 className="sheet-title serif">
+                  {editEventId ? "Editar evento" : "Nuevo evento"}
+                </h3>
+                <p className="sheet-sub">
+                  {editEventId
+                    ? "Los cambios se guardan en tu Google Calendar."
+                    : "Se crea en tu Google Calendar."}
+                </p>
+                <form className="sheet-form" onSubmit={saveEvent}>
+                  <input
+                    autoFocus
+                    placeholder="Título del evento"
+                    value={evTitle}
+                    onChange={(e) => setEvTitle(e.target.value)}
+                  />
+                  <div className="q">
+                    <div className="q-label">Día</div>
+                    <input
+                      type="date"
+                      className="time-input"
+                      value={evDay}
+                      onChange={(e) => setEvDay(e.target.value)}
+                    />
+                  </div>
+                  <div className="q">
+                    <div className="chips">
+                      <button
+                        type="button"
+                        className={`chip ${evAllDay ? "chip-on" : ""}`}
+                        onClick={() => setEvAllDay((v) => !v)}
+                      >
+                        Todo el día
+                      </button>
+                    </div>
+                  </div>
+                  {!evAllDay && (
+                    <div className="q">
+                      <div className="q-label">Hora</div>
+                      <div className="chips" style={{ alignItems: "center" }}>
+                        <input
+                          type="time"
+                          className="time-input"
+                          value={evStart}
+                          onChange={(e) => setEvStart(e.target.value)}
+                        />
+                        <span style={{ color: "var(--muted)" }}>–</span>
+                        <input
+                          type="time"
+                          className="time-input"
+                          value={evEnd}
+                          onChange={(e) => setEvEnd(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                  )}
+                  <button
+                    className="btn"
+                    type="submit"
+                    disabled={savingEvent || !evTitle.trim() || !evDay}
+                  >
+                    {savingEvent
+                      ? "Guardando…"
+                      : editEventId
+                      ? "Guardar cambios"
+                      : "Crear evento"}
+                  </button>
+                </form>
+
+                {editEventId && evLink && (
+                  <a
+                    className="btn btn-ghost"
+                    href={evLink}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{
+                      display: "block",
+                      textAlign: "center",
+                      textDecoration: "none",
+                      marginTop: 12,
+                    }}
+                  >
+                    Abrir en Google Calendar ↗
+                  </a>
+                )}
+                {editEventId &&
+                  (!evConfirmDelete ? (
+                    <button className="btn-text-danger" onClick={() => setEvConfirmDelete(true)}>
+                      Borrar evento
+                    </button>
+                  ) : (
+                    <div className="confirm">
+                      <p className="confirm-q">¿Borrar este evento de tu calendario?</p>
+                      <div className="confirm-row">
+                        <button className="btn btn-ghost" onClick={() => setEvConfirmDelete(false)}>
+                          Cancelar
+                        </button>
+                        <button className="btn btn-danger" onClick={removeEvent}>
+                          Sí, borrar
+                        </button>
+                      </div>
+                    </div>
+                  ))}
               </>
             )}
             {sheet === "task" && activeTask && (() => {
