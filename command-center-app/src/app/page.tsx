@@ -48,6 +48,13 @@ type HabitDef = {
   timesDone: number | null;
   constancia: number | null;
 };
+type CalEvent = {
+  id: string;
+  title: string;
+  start: string; // ISO datetime, or "YYYY-MM-DD" for all-day
+  end: string;
+  allDay: boolean;
+};
 type Data = { today: string; date: string; tasks: Task[]; habits: Habit[] };
 type TaskDetailData = {
   id: string;
@@ -300,6 +307,33 @@ function dowLetter(iso: string): string {
   const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay(); // 0 Sun..6 Sat
   return ["D", "L", "M", "M", "J", "V", "S"][dow];
 }
+// ET calendar date (YYYY-MM-DD) of an event start (date-only passes through).
+function etDayOf(iso: string): string {
+  if (iso.length === 10) return iso;
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(iso));
+}
+function eventsForDay(events: CalEvent[], iso: string): CalEvent[] {
+  return events
+    .filter((e) =>
+      e.allDay
+        ? iso >= e.start.slice(0, 10) && iso < e.end.slice(0, 10)
+        : etDayOf(e.start) === iso
+    )
+    .sort((a, b) => a.start.localeCompare(b.start));
+}
+function CalGlyph() {
+  return (
+    <svg className="cal-ico" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <rect x="3.5" y="5" width="17" height="15" rx="2.5" stroke="currentColor" strokeWidth="1.7" />
+      <path d="M3.5 9.5h17M8 3.5v3M16 3.5v3" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+    </svg>
+  );
+}
 // "Jueves, 29 de mayo"
 function fullDayES(iso: string): string {
   const [y, m, d] = iso.split("-").map(Number);
@@ -398,6 +432,9 @@ export default function Home() {
   const [planData, setPlanData] = useState<PlanData | null>(null);
   const [planLoading, setPlanLoading] = useState(false);
   const [planWeek, setPlanWeek] = useState<"this" | "next">("this");
+  // Google Calendar events for the current day / week.
+  const [dayEvents, setDayEvents] = useState<CalEvent[]>([]);
+  const [weekEvents, setWeekEvents] = useState<CalEvent[]>([]);
   // Focused day in the weekly agenda (Semana); null = default to today/first.
   const [selDay, setSelDay] = useState<string | null>(null);
   // Drag & drop. The dragged id lives in a ref so starting a drag doesn't
@@ -483,7 +520,12 @@ export default function Home() {
         } catch {}
         throw new Error(detail || `No se pudo cargar (${res.status})`);
       }
-      setData(await res.json());
+      const d = await res.json();
+      setData(d);
+      fetch(`/api/calendar?start=${d.date}&end=${d.date}`, { cache: "no-store" })
+        .then((r) => (r.ok ? r.json() : { events: [] }))
+        .then((j) => setDayEvents(j.events ?? []))
+        .catch(() => setDayEvents([]));
     } catch (e: any) {
       setError(e?.message ?? "Error");
     } finally {
@@ -524,8 +566,14 @@ export default function Home() {
         window.location.href = "/login";
         return;
       }
-      if (res.ok) setPlanData(await res.json());
-      else {
+      if (res.ok) {
+        const json = await res.json();
+        setPlanData(json);
+        fetch(`/api/calendar?start=${json.weekStart}&end=${json.weekEnd}`, { cache: "no-store" })
+          .then((r) => (r.ok ? r.json() : { events: [] }))
+          .then((j) => setWeekEvents(j.events ?? []))
+          .catch(() => setWeekEvents([]));
+      } else {
         let detail = "";
         try {
           detail = (await res.json())?.error ?? "";
@@ -1375,6 +1423,7 @@ export default function Home() {
                           if (ad !== bd) return ad - bd;
                           return (a.date ?? "").localeCompare(b.date ?? "");
                         });
+                      const dayEvs = eventsForDay(weekEvents, iso);
                       const isToday = iso === planData.today;
                       const isSel = iso === sel;
                       return (
@@ -1407,11 +1456,25 @@ export default function Home() {
                           <div className="agenda-head" onClick={() => setSelDay(iso)}>
                             <span className="agenda-dow">{shortDayES(iso)}</span>
                             {isToday && <span className="agenda-today">Hoy</span>}
-                            {dayTasks.length > 0 && (
-                              <span className="agenda-n">{dayTasks.length}</span>
+                            {dayTasks.length + dayEvs.length > 0 && (
+                              <span className="agenda-n">{dayTasks.length + dayEvs.length}</span>
                             )}
                           </div>
-                          {dayTasks.length === 0 ? (
+                          {dayEvs.map((ev) => (
+                            <div key={ev.id} className={`cal-event ${ev.allDay ? "allday" : ""}`}>
+                              <div className="agenda-item-head">
+                                <CalGlyph />
+                                <span className="agenda-title">{ev.title}</span>
+                              </div>
+                              {!ev.allDay && clockES(ev.start) && (
+                                <span className="agenda-time">
+                                  {clockES(ev.start)}
+                                  {clockES(ev.end) ? ` – ${clockES(ev.end)}` : ""}
+                                </span>
+                              )}
+                            </div>
+                          ))}
+                          {dayTasks.length === 0 && dayEvs.length === 0 ? (
                             <div className="agenda-empty">
                               <Sprout />
                               Libre
@@ -1474,10 +1537,18 @@ export default function Home() {
           { key: "pm" as const, ico: "☾", label: "Rutina de noche", time: guides.pm },
         ];
         const untimed = data.tasks.filter((t) => !hasTime(t.date));
+        const dayEvs = dayEvents.filter((e) =>
+          e.allDay
+            ? data.date >= e.start.slice(0, 10) && data.date < e.end.slice(0, 10)
+            : etDayOf(e.start) === data.date
+        );
+        const allDayEvs = dayEvs.filter((e) => e.allDay);
+        const timedEvs = dayEvs.filter((e) => !e.allDay);
 
         type Ev =
           | { kind: "anchor"; id: string; ico: string; label: string; akey: "am" | "noon" | "pm"; min: number; time: string }
-          | { kind: "task"; id: string; t: Task; min: number; endMin: number };
+          | { kind: "task"; id: string; t: Task; min: number; endMin: number }
+          | { kind: "cal"; id: string; ev: CalEvent; min: number };
         const events: Ev[] = [
           ...anchorDefs.map((a) => ({
             kind: "anchor" as const, id: "anchor-" + a.key, ico: a.ico, label: a.label,
@@ -1487,6 +1558,9 @@ export default function Home() {
             const min = toMin(timeHHMM_ET(t.date!));
             return { kind: "task" as const, id: t.id, t, min, endMin: min + (t.estMin ?? 0) };
           }),
+          ...timedEvs.map((e) => ({
+            kind: "cal" as const, id: "cal-" + e.id, ev: e, min: toMin(timeHHMM_ET(e.start)),
+          })),
         ];
         // Everything in order by time; on a tie the anchor leads.
         events.sort((a, b) => a.min - b.min || (a.kind === "anchor" ? -1 : 1));
@@ -1506,6 +1580,17 @@ export default function Home() {
               </span>
             </div>
 
+            {allDayEvs.length > 0 && (
+              <div className="allday-row">
+                {allDayEvs.map((ev) => (
+                  <span key={ev.id} className="allday-chip">
+                    <CalGlyph />
+                    {ev.title}
+                  </span>
+                ))}
+              </div>
+            )}
+
             <div className="dayflow">
               {events.map((e) =>
                 e.kind === "anchor" ? (
@@ -1521,6 +1606,17 @@ export default function Home() {
                       onChange={(ev) => setGuide(e.akey, ev.target.value)}
                       aria-label={`Hora de ${e.label}`}
                     />
+                  </div>
+                ) : e.kind === "cal" ? (
+                  <div className="dayblock calblock" key={e.id}>
+                    <div className="dayblock-time">
+                      {clockES(e.ev.start)}
+                      {clockES(e.ev.end) && <span className="dayblock-end">{clockES(e.ev.end)}</span>}
+                    </div>
+                    <div className="dayblock-body">
+                      <CalGlyph />
+                      <span className="dayblock-title">{e.ev.title}</span>
+                    </div>
                   </div>
                 ) : (
                   (() => {
