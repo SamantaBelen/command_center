@@ -699,10 +699,12 @@ export default function Home() {
       patchHabit(h.id, { planned: h.planned });
     }
   }
-  // Día: give a daily/other habit a clock time on the viewed day (or clear it).
+  // Give a habit a clock time (or clear it). Keep it on its own assigned day if
+  // it has one, otherwise use the day being viewed in Día.
   function saveHabitTime(h: Habit, hhmm: string | null) {
-    if (!data) return;
-    saveHabitPlanned(h, hhmm ? buildETDateTime(data.date, hhmm) : null);
+    const day = (h.planned ?? "").slice(0, 10) || data?.date;
+    if (!day) return;
+    saveHabitPlanned(h, hhmm ? buildETDateTime(day, hhmm) : null);
   }
   // Semana: assign a habit to a day (date only), or clear back to the pool.
   function saveHabitDay(h: Habit, dayISO: string | null) {
@@ -1180,13 +1182,16 @@ export default function Home() {
 
   function renderHabit(h: Habit) {
     return (
-      <div
-        key={h.id}
-        className={`item ${h.done ? "done" : ""}`}
-        onClick={() => toggleHabit(h)}
-      >
-        <CheckMark />
-        <div className="item-body">
+      <div key={h.id} className={`item ${h.done ? "done" : ""}`}>
+        <span
+          onClick={(e) => {
+            e.stopPropagation();
+            toggleHabit(h);
+          }}
+        >
+          <CheckMark />
+        </span>
+        <div className="item-body" onClick={() => openHabitSheet(h)}>
           <div className="item-title">{h.title}</div>
           {h.cadence && (
             <div className="item-meta">
@@ -1194,6 +1199,9 @@ export default function Home() {
             </div>
           )}
         </div>
+        <span onClick={() => openHabitSheet(h)}>
+          <Chevron />
+        </span>
       </div>
     );
   }
