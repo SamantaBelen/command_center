@@ -400,10 +400,16 @@ export default function Home() {
   const [planWeek, setPlanWeek] = useState<"this" | "next">("this");
   // Focused day in the weekly agenda (Semana); null = default to today/first.
   const [selDay, setSelDay] = useState<string | null>(null);
-  // Drag & drop: the task being dragged, the day it's over, or the pool.
-  const [dragId, setDragId] = useState<string | null>(null);
+  // Drag & drop. The dragged id lives in a ref so starting a drag doesn't
+  // re-render the dragged card (which aborts the native drag in browsers).
+  const dragIdRef = useRef<string | null>(null);
   const [dragOverDay, setDragOverDay] = useState<string | null>(null);
   const [dragOverPool, setDragOverPool] = useState(false);
+  function endDrag() {
+    dragIdRef.current = null;
+    setDragOverDay(null);
+    setDragOverPool(false);
+  }
 
   // Per-day guide times for the Día dayparts (visual anchors, stored on-device).
   const [guides, setGuides] = useState(DEFAULT_GUIDES);
@@ -1194,23 +1200,21 @@ export default function Home() {
               return (
                 <>
                   <div
-                    className={`plan-pool ${dragId ? "dnd" : ""} ${
-                      dragOverPool ? "drag-over-pool" : ""
-                    }`}
+                    className={`plan-pool ${dragOverPool ? "drag-over-pool" : ""}`}
                     onDragOver={(e) => {
-                      if (!dragId) return;
+                      if (!dragIdRef.current) return;
                       e.preventDefault();
                       e.dataTransfer.dropEffect = "move";
-                      if (!dragOverPool) setDragOverPool(true);
+                      if (!dragOverPool) {
+                        setDragOverPool(true);
+                        setDragOverDay(null);
+                      }
                     }}
-                    onDragLeave={() => setDragOverPool(false)}
                     onDrop={(e) => {
                       e.preventDefault();
                       const id = e.dataTransfer.getData("text/plain");
                       const task = planData.week.find((x) => x.id === id);
-                      setDragId(null);
-                      setDragOverDay(null);
-                      setDragOverPool(false);
+                      endDrag();
                       if (task) moveTask(task, planData.bucket);
                     }}
                   >
@@ -1240,18 +1244,14 @@ export default function Home() {
                             {sortedPool.map((t) => (
                               <div
                                 key={t.id}
-                                className={`pool-drag ${dragId === t.id ? "dragging" : ""}`}
+                                className="pool-drag"
                                 draggable
                                 onDragStart={(e) => {
                                   e.dataTransfer.setData("text/plain", t.id);
                                   e.dataTransfer.effectAllowed = "move";
-                                  setDragId(t.id);
+                                  dragIdRef.current = t.id;
                                 }}
-                                onDragEnd={() => {
-                                  setDragId(null);
-                                  setDragOverDay(null);
-                                  setDragOverPool(false);
-                                }}
+                                onDragEnd={endDrag}
                               >
                                 {renderCard(t)}
                               </div>
@@ -1365,7 +1365,7 @@ export default function Home() {
                       </button>
                     </div>
                   </div>
-                  <div className={`agenda ${dragId ? "dnd" : ""}`}>
+                  <div className="agenda">
                     {planData.weekDays.map((iso) => {
                       const dayTasks = planData.week
                         .filter((t) => (t.date ?? "").slice(0, 10) === iso)
@@ -1384,22 +1384,21 @@ export default function Home() {
                             isSel ? "agenda-sel" : ""
                           } ${dragOverDay === iso ? "drag-over" : ""}`}
                           onDragOver={(e) => {
-                            if (!dragId) return;
+                            if (!dragIdRef.current) return;
                             e.preventDefault();
                             e.dataTransfer.dropEffect = "move";
-                            if (dragOverDay !== iso) setDragOverDay(iso);
+                            if (dragOverDay !== iso) {
+                              setDragOverDay(iso);
+                              setDragOverPool(false);
+                            }
                           }}
-                          onDragLeave={() =>
-                            setDragOverDay((d) => (d === iso ? null : d))
-                          }
                           onDrop={(e) => {
                             e.preventDefault();
                             const id = e.dataTransfer.getData("text/plain");
                             const task =
                               planData.pool.find((x) => x.id === id) ??
                               planData.week.find((x) => x.id === id);
-                            setDragId(null);
-                            setDragOverDay(null);
+                            endDrag();
                             if (task && (task.date ?? "").slice(0, 10) !== iso) {
                               assignTaskToDay(task, iso);
                             }
@@ -1427,20 +1426,14 @@ export default function Home() {
                               return (
                                 <div
                                   key={t.id}
-                                  className={`agenda-item ${t.status === "Done" ? "done" : ""} ${
-                                    dragId === t.id ? "dragging" : ""
-                                  }`}
+                                  className={`agenda-item ${t.status === "Done" ? "done" : ""}`}
                                   draggable
                                   onDragStart={(e) => {
                                     e.dataTransfer.setData("text/plain", t.id);
                                     e.dataTransfer.effectAllowed = "move";
-                                    setDragId(t.id);
+                                    dragIdRef.current = t.id;
                                   }}
-                                  onDragEnd={() => {
-                                    setDragId(null);
-                                    setDragOverDay(null);
-                                    setDragOverPool(false);
-                                  }}
+                                  onDragEnd={endDrag}
                                   onClick={() => openTaskSheet(t)}
                                 >
                                   <div className="agenda-item-head">

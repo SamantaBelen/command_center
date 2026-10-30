@@ -1515,22 +1515,15 @@ textarea,
 .pool-drag:active {
   cursor: grabbing;
 }
-.pool-drag.dragging {
-  opacity: 0.5;
+.agenda-item[draggable="true"] {
+  cursor: grab;
 }
+/* drop-target highlights (set via onDragOver; cleared on drop/dragend —
+   no onDragLeave, so the highlight doesn't flicker over inner elements) */
 .agenda-day.drag-over {
   border-color: var(--burgundy);
   background: rgba(110, 43, 58, 0.07);
   box-shadow: inset 0 0 0 2px var(--burgundy-soft);
-}
-/* while dragging, children don't catch drag events, so the day's
-   highlight doesn't flicker as the cursor crosses inner elements */
-.agenda.dnd .agenda-day * {
-  pointer-events: none;
-}
-/* the pool is also a drop target — drag a scheduled task back to it */
-.plan-pool.dnd * {
-  pointer-events: none;
 }
 .plan-pool.drag-over-pool {
   border-radius: 14px;
