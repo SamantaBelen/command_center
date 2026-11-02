@@ -1861,6 +1861,12 @@ textarea,
     order: 0;
     /* drop the pool down to the balance row (seg sits above it on the right) */
     margin-top: 58px;
+    /* "por repartir" keeps its own scroll, independent of the week agenda */
+    position: sticky;
+    top: 24px;
+    max-height: calc(100vh - var(--nav-h) - 110px);
+    overflow-y: auto;
+    padding-right: 6px;
   }
   .plan-right {
     grid-column: 2;
