@@ -17,6 +17,24 @@ export function todayET(): string {
   }).format(new Date());
 }
 
+function addDaysISO(iso: string, n: number): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+}
+
+// The Eastern calendar date (YYYY-MM-DD) a stored date/datetime falls on. A
+// date-only value passes through; a datetime is converted from its own offset
+// to Eastern, so an 8pm-ET task (which is next-day UTC) still counts as today.
+function etDayOf(dateStr: string): string {
+  if (dateStr.length === 10) return dateStr;
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(dateStr));
+}
+
 export type Task = {
   id: string;
   title: string;
@@ -127,17 +145,21 @@ export async function getWeekTasks(startISO: string, endISO: string): Promise<Ta
 // Done, so completed tasks stay visible (marked done). For today we also bubble
 // up overdue tasks that are still pending (Date before today, not Done).
 export async function getTasks(dateISO: string, includeOverdue: boolean): Promise<Task[]> {
-  // Tasks scheduled on this exact day (any status except Cancel → includes Done).
-  const sameDay = {
+  // Query a UTC window [day, day+1] so evening-ET tasks (which land on the next
+  // UTC day) are still fetched; the exact day is then matched in Eastern time
+  // below. A plain `equals: dateISO` misses them.
+  const nextDay = addDaysISO(dateISO, 1);
+  const dayWindow = {
     and: [
-      { property: "Date", date: { equals: dateISO } },
+      { property: "Date", date: { on_or_after: dateISO } },
+      { property: "Date", date: { on_or_before: nextDay } },
       { property: "Status", status: { does_not_equal: "Cancel" } },
     ],
   };
   const filter = includeOverdue
     ? {
         or: [
-          sameDay,
+          dayWindow,
           {
             and: [
               { property: "Date", date: { before: dateISO } },
@@ -147,7 +169,7 @@ export async function getTasks(dateISO: string, includeOverdue: boolean): Promis
           },
         ],
       }
-    : sameDay;
+    : dayWindow;
 
   const res = await notion.databases.query({
     database_id: TASKS_DB,
@@ -155,7 +177,14 @@ export async function getTasks(dateISO: string, includeOverdue: boolean): Promis
     page_size: 100,
   });
 
-  const tasks = res.results.map(mapTaskPage);
+  // Keep tasks that fall on this Eastern day; plus, for today, still-pending
+  // tasks from earlier days (overdue). Drops next-day tasks the window pulled in.
+  const tasks = res.results.map(mapTaskPage).filter((t) => {
+    if (!t.date) return false;
+    const etd = etDayOf(t.date);
+    if (etd === dateISO) return true;
+    return includeOverdue && etd < dateISO && t.status !== "Done" && t.status !== "Cancel";
+  });
 
   // Pending first, completed last; within each, earliest date first.
   tasks.sort((a, b) => {
