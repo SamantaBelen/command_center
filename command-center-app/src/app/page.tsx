@@ -2025,12 +2025,13 @@ export default function Home() {
                 ) : e.kind === "habit" ? (
                   (() => {
                     const h = e.h;
+                    const nonDaily = !isDailyC(h.cadence);
                     return (
                       <div
                         key={e.id}
-                        className={`dayblock habitblock ${h.done ? "done" : ""} ${
-                          overlaps.has(e.id) ? "overlap" : ""
-                        }`}
+                        className={`dayblock habitblock ${nonDaily ? "nondaily" : ""} ${
+                          h.done ? "done" : ""
+                        } ${overlaps.has(e.id) ? "overlap" : ""}`}
                       >
                         <div className="dayblock-time">
                           {fmtClock(e.min)}
@@ -2049,6 +2050,9 @@ export default function Home() {
                           <span className="dayblock-title" onClick={() => openHabitSheet(h)}>
                             {h.title}
                           </span>
+                          {nonDaily && (
+                            <span className="cad-chip">{cadenceES(h.cadence)}</span>
+                          )}
                           {h.estMin ? <span className="agenda-time">{fmtMin(h.estMin)}</span> : null}
                           {overlaps.has(e.id) && <span className="overlap-tag">se solapa</span>}
                         </div>

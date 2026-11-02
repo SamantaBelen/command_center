@@ -805,6 +805,25 @@ textarea,
   text-decoration: line-through;
   text-decoration-color: #b8c4a2;
 }
+/* non-daily habits (weekly/monthly…) stand out from the daily routine */
+.habitblock.nondaily {
+  border-left-color: var(--gold);
+}
+.habitblock.nondaily:not(.done) {
+  background: var(--gold-tint);
+}
+.cad-chip {
+  flex: 0 0 auto;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--gold-ink);
+  background: var(--gold-tint);
+  border: 1px solid var(--gold-soft);
+  border-radius: 999px;
+  padding: 1px 8px;
+  white-space: nowrap;
+}
 
 /* ephemeral daypart drop zones (Día), shown only while a card is dragged */
 .daypart-zones {
