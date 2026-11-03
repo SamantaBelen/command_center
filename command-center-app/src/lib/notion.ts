@@ -44,6 +44,7 @@ export type Task = {
   date: string | null; // may be "YYYY-MM-DD" or a full ISO timestamp
   plan: string | null; // "Planeación" bucket: Agendado / Esta semana / Próxima semana / Eventualmente
   estMin: number | null; // Estimated Time (min)
+  realMin: number | null; // Tiempo real (min) — tracked by the app timer
   importance: string | null; // Urgent / Need / Required / Schedule / Want
   impact: number | null; // 0–5
   effort: number | null; // 0–5
@@ -58,6 +59,7 @@ export type Habit = {
   itemId: string | null; // the related Habit definition's page id
   timeOfDay: string | null; // morning / afternoon / night (from the habit)
   estMin: number | null; // estimated minutes (from the habit)
+  realMin: number | null; // Tiempo real (min) — tracked by the app timer
   planned: string | null; // "Fecha planeada": ISO date or datetime, or null
 };
 
@@ -117,6 +119,7 @@ function mapTaskPage(page: any): Task {
     date: props["Date"]?.date?.start ?? null,
     plan: props["Planeación"]?.select?.name ?? null,
     estMin: props["Estimated Time (min)"]?.number ?? null,
+    realMin: props["Tiempo real (min)"]?.number ?? null,
     importance: props["Importance"]?.select?.name ?? null,
     impact: props["Impact"]?.number ?? null,
     effort: props["Effort"]?.number ?? null,
@@ -234,6 +237,7 @@ function mapCheckin(
     itemId,
     timeOfDay: (itemId && maps.tod.get(itemId)) ?? null,
     estMin: (itemId && maps.est.get(itemId)) ?? null,
+    realMin: props["Tiempo real (min)"]?.number ?? null,
     planned: props["Fecha planeada"]?.date?.start ?? null,
   };
 }
@@ -610,6 +614,7 @@ export async function createTask(title: string, opts: CreateOpts = {}): Promise<
     date,
     plan: opts.plan ?? null,
     estMin: null,
+    realMin: null,
     importance: null,
     impact: null,
     effort: null,
@@ -622,6 +627,7 @@ export type TaskFields = {
   priority?: string | null;
   importance?: string | null;
   estMin?: number | null;
+  realMin?: number | null;
   impact?: number | null;
   effort?: number | null;
 };
@@ -633,9 +639,19 @@ export async function setTaskFields(id: string, fields: TaskFields): Promise<voi
     properties.Importance = fields.importance ? { select: { name: fields.importance } } : { select: null };
   if ("estMin" in fields)
     properties["Estimated Time (min)"] = { number: fields.estMin ?? null };
+  if ("realMin" in fields)
+    properties["Tiempo real (min)"] = { number: fields.realMin ?? null };
   if ("impact" in fields) properties.Impact = { number: fields.impact ?? null };
   if ("effort" in fields) properties.Effort = { number: fields.effort ?? null };
   await notion.pages.update({ page_id: id, properties });
+}
+
+// Set the actual tracked minutes on a habit check-in ("Tiempo real (min)").
+export async function setCheckinReal(id: string, minutes: number | null): Promise<void> {
+  await notion.pages.update({
+    page_id: id,
+    properties: { "Tiempo real (min)": { number: minutes ?? null } },
+  });
 }
 
 // Set (or clear) a start time on a task for a given day. hhmm null → date only.

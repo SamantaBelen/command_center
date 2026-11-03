@@ -825,6 +825,58 @@ textarea,
   white-space: nowrap;
 }
 
+/* start/stop timer button (on timeline blocks and in detail sheets) */
+.timer-btn {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--burgundy);
+  border-radius: 999px;
+  padding: 5px 11px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+.timer-btn svg {
+  width: 13px;
+  height: 13px;
+}
+.timer-btn.compact {
+  padding: 5px;
+}
+.timer-btn:hover {
+  border-color: var(--burgundy-soft);
+}
+.timer-btn.running {
+  background: var(--burgundy);
+  border-color: var(--burgundy);
+  color: #f6efe9;
+  animation: timerPulse 2s ease-in-out infinite;
+}
+.timer-elapsed {
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+@keyframes timerPulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.8;
+  }
+}
+.time-compare {
+  font-size: 13px;
+  color: var(--muted-2);
+  font-variant-numeric: tabular-nums;
+}
+
 /* ephemeral daypart drop zones (Día), shown only while a card is dragged */
 .daypart-zones {
   display: flex;

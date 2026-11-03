@@ -14,6 +14,7 @@ type Task = {
   date: string | null;
   plan: string | null;
   estMin: number | null;
+  realMin: number | null;
   importance: string | null;
   impact: number | null;
   effort: number | null;
@@ -38,6 +39,7 @@ type Habit = {
   itemId: string | null;
   timeOfDay: string | null; // morning / afternoon / night
   estMin: number | null;
+  realMin: number | null;
   planned: string | null; // "Fecha planeada": ISO date or datetime, or null
 };
 type HabitDef = {
@@ -355,6 +357,28 @@ function CalGlyph() {
     </svg>
   );
 }
+// elapsed seconds → "m:ss" or "h:mm:ss"
+function fmtElapsed(secs: number): string {
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  const s = secs % 60;
+  const p = (n: number) => String(n).padStart(2, "0");
+  return h ? `${h}:${p(m)}:${p(s)}` : `${m}:${p(s)}`;
+}
+function PlayGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <path d="M8 5.5v13l11-6.5z" />
+    </svg>
+  );
+}
+function StopGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <rect x="6.5" y="6.5" width="11" height="11" rx="2" />
+    </svg>
+  );
+}
 // "Jueves, 29 de mayo"
 function fullDayES(iso: string): string {
   const [y, m, d] = iso.split("-").map(Number);
@@ -486,6 +510,111 @@ export default function Home() {
     setDragOverDay(null);
     setDragOverPool(false);
     setDayDragging(false);
+  }
+
+  // Timer: one running at a time. We store the start timestamp (not a counter),
+  // persisted on-device, so it survives reloads/sleep: elapsed = now - startedAt.
+  type RunTimer = { kind: "task" | "habit"; id: string; title: string; startedAt: number };
+  const [timer, setTimer] = useState<RunTimer | null>(null);
+  const [nowTick, setNowTick] = useState(() => Date.now());
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("cc_timer");
+      if (raw) setTimer(JSON.parse(raw));
+    } catch {}
+  }, []);
+  useEffect(() => {
+    if (!timer) return;
+    setNowTick(Date.now());
+    const h = setInterval(() => setNowTick(Date.now()), 1000);
+    return () => clearInterval(h);
+  }, [timer]);
+  function persistTimer(t: RunTimer | null) {
+    setTimer(t);
+    try {
+      if (t) localStorage.setItem("cc_timer", JSON.stringify(t));
+      else localStorage.removeItem("cc_timer");
+    } catch {}
+  }
+  function currentRealMin(kind: "task" | "habit", id: string): number {
+    if (kind === "task") {
+      const t =
+        (data?.tasks ?? []).find((x) => x.id === id) ??
+        (weekTasks ?? []).find((x) => x.id === id) ??
+        (planData?.pool ?? []).find((x) => x.id === id) ??
+        (planData?.week ?? []).find((x) => x.id === id);
+      return t?.realMin ?? 0;
+    }
+    const h =
+      (data?.habits ?? []).find((x) => x.id === id) ??
+      (planData?.weekHabits ?? []).find((x) => x.id === id);
+    return h?.realMin ?? 0;
+  }
+  async function stopTimer() {
+    const t = timer;
+    if (!t) return;
+    persistTimer(null);
+    const elapsedMin = Math.round((Date.now() - t.startedAt) / 60000);
+    if (elapsedMin <= 0) return; // ignore an accidental quick start/stop
+    const total = currentRealMin(t.kind, t.id) + elapsedMin;
+    try {
+      if (t.kind === "task") {
+        applyPatch(t.id, { realMin: total });
+        const res = await fetch("/api/task", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: t.id, fields: { realMin: total } }),
+        });
+        if (!res.ok) throw new Error();
+      } else {
+        patchHabit(t.id, { realMin: total });
+        const res = await fetch("/api/checkin", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: t.id, real: total }),
+        });
+        if (!res.ok) throw new Error();
+      }
+    } catch {
+      setError("No se pudo guardar el tiempo");
+      reloadCurrent();
+    }
+  }
+  function startTimer(kind: "task" | "habit", id: string, title: string) {
+    // One at a time: toggle off if it's the same item, else stop the other first.
+    if (timer) {
+      const same = timer.kind === kind && timer.id === id;
+      stopTimer();
+      if (same) return;
+    }
+    persistTimer({ kind, id, title, startedAt: Date.now() });
+  }
+  function TimerButton({
+    kind,
+    id,
+    title,
+    compact,
+  }: {
+    kind: "task" | "habit";
+    id: string;
+    title: string;
+    compact?: boolean;
+  }) {
+    const running = !!timer && timer.kind === kind && timer.id === id;
+    const secs = running ? Math.max(0, Math.floor((nowTick - timer!.startedAt) / 1000)) : 0;
+    return (
+      <button
+        className={`timer-btn ${running ? "running" : ""} ${compact ? "compact" : ""}`}
+        onClick={(e) => {
+          e.stopPropagation();
+          running ? stopTimer() : startTimer(kind, id, title);
+        }}
+        aria-label={running ? "Parar timer" : "Empezar timer"}
+      >
+        {running ? <StopGlyph /> : <PlayGlyph />}
+        {running && <span className="timer-elapsed">{fmtElapsed(secs)}</span>}
+      </button>
+    );
   }
 
   // Per-day guide times for the Día dayparts (visual anchors, stored on-device).
@@ -2055,6 +2184,7 @@ export default function Home() {
                           )}
                           {h.estMin ? <span className="agenda-time">{fmtMin(h.estMin)}</span> : null}
                           {overlaps.has(e.id) && <span className="overlap-tag">se solapa</span>}
+                          <TimerButton kind="habit" id={h.id} title={h.title} compact />
                         </div>
                       </div>
                     );
@@ -2081,6 +2211,7 @@ export default function Home() {
                           <span className="dayblock-title">{t.title}</span>
                           {t.estMin ? <span className="agenda-time">{fmtMin(t.estMin)}</span> : null}
                           {overlaps.has(e.id) && <span className="overlap-tag">se solapa</span>}
+                          <TimerButton kind="task" id={t.id} title={t.title} compact />
                         </div>
                       </div>
                     );
@@ -2593,6 +2724,16 @@ export default function Home() {
                       )}
                     </div>
                   </div>
+                  <div className="q">
+                    <div className="q-label">Tiempo real</div>
+                    <div className="chips" style={{ alignItems: "center", gap: 10 }}>
+                      <TimerButton kind="habit" id={live.id} title={live.title} />
+                      <span className="time-compare">
+                        {live.realMin ? fmtMin(live.realMin) : "—"}
+                        {live.estMin ? ` / ${fmtMin(live.estMin)} est.` : ""}
+                      </span>
+                    </div>
+                  </div>
                   <p className="hint">
                     {daily
                       ? "Si no le das hora propia, se acomoda solo en su franja usando su duración."
@@ -2623,6 +2764,17 @@ export default function Home() {
                   >
                     {done ? "Marcar como no hecha" : "Marcar como hecha ✓"}
                   </button>
+
+                  <div className="q">
+                    <div className="q-label">Tiempo real</div>
+                    <div className="chips" style={{ alignItems: "center", gap: 10 }}>
+                      <TimerButton kind="task" id={live.id} title={live.title} />
+                      <span className="time-compare">
+                        {live.realMin ? fmtMin(live.realMin) : "—"}
+                        {live.estMin ? ` / ${fmtMin(live.estMin)} est.` : ""}
+                      </span>
+                    </div>
+                  </div>
 
                   <div className="q">
                     <div className="q-label">Estado</div>
