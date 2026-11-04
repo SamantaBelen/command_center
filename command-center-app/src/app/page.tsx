@@ -840,6 +840,45 @@ export default function Home() {
     saveHabitPlanned(h, dayISO);
   }
 
+  // Manually set the tracked minutes (for when the timer wasn't used). The input
+  // patches optimistically on change; this commits the current value to Notion.
+  function lookupTask(id: string): Task | undefined {
+    return (
+      (data?.tasks ?? []).find((x) => x.id === id) ??
+      (weekTasks ?? []).find((x) => x.id === id) ??
+      (planData?.pool ?? []).find((x) => x.id === id) ??
+      (planData?.week ?? []).find((x) => x.id === id)
+    );
+  }
+  function lookupHabit(id: string): Habit | undefined {
+    return (
+      (data?.habits ?? []).find((x) => x.id === id) ??
+      (planData?.weekHabits ?? []).find((x) => x.id === id)
+    );
+  }
+  async function commitReal(kind: "task" | "habit", id: string) {
+    const minutes =
+      kind === "task" ? lookupTask(id)?.realMin ?? null : lookupHabit(id)?.realMin ?? null;
+    try {
+      const res =
+        kind === "task"
+          ? await fetch("/api/task", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ id, fields: { realMin: minutes } }),
+            })
+          : await fetch("/api/checkin", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ id, real: minutes }),
+            });
+      if (!res.ok) throw new Error();
+    } catch {
+      setError("No se pudo guardar el tiempo");
+      reloadCurrent();
+    }
+  }
+
   async function addTask(e: React.FormEvent) {
     e.preventDefault();
     const title = newTask.trim();
@@ -2744,10 +2783,25 @@ export default function Home() {
                     <div className="q-label">Tiempo real</div>
                     <div className="chips" style={{ alignItems: "center", gap: 10 }}>
                       <TimerButton kind="habit" id={live.id} title={live.title} />
-                      <span className="time-compare">
-                        {live.realMin ? fmtMin(live.realMin) : "—"}
-                        {live.estMin ? ` / ${fmtMin(live.estMin)} est.` : ""}
-                      </span>
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        min={0}
+                        className="min-input"
+                        value={live.realMin ?? ""}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          if (v !== "" && Number.isNaN(Number(v))) return;
+                          patchHabit(live.id, {
+                            realMin: v === "" ? null : Math.max(0, Math.round(Number(v))),
+                          });
+                        }}
+                        onBlur={() => commitReal("habit", live.id)}
+                      />
+                      <span className="min-unit">min</span>
+                      {live.estMin ? (
+                        <span className="time-compare">/ {fmtMin(live.estMin)} est.</span>
+                      ) : null}
                     </div>
                   </div>
                   <p className="hint">
@@ -2785,10 +2839,25 @@ export default function Home() {
                     <div className="q-label">Tiempo real</div>
                     <div className="chips" style={{ alignItems: "center", gap: 10 }}>
                       <TimerButton kind="task" id={live.id} title={live.title} />
-                      <span className="time-compare">
-                        {live.realMin ? fmtMin(live.realMin) : "—"}
-                        {live.estMin ? ` / ${fmtMin(live.estMin)} est.` : ""}
-                      </span>
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        min={0}
+                        className="min-input"
+                        value={live.realMin ?? ""}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          if (v !== "" && Number.isNaN(Number(v))) return;
+                          applyPatch(live.id, {
+                            realMin: v === "" ? null : Math.max(0, Math.round(Number(v))),
+                          });
+                        }}
+                        onBlur={() => commitReal("task", live.id)}
+                      />
+                      <span className="min-unit">min</span>
+                      {live.estMin ? (
+                        <span className="time-compare">/ {fmtMin(live.estMin)} est.</span>
+                      ) : null}
                     </div>
                   </div>
 
