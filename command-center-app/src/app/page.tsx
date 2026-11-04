@@ -1983,6 +1983,10 @@ export default function Home() {
         // Fallback duration (min) for habits with no "Tiempo estimado", so they
         // still take a visible slot when sequenced.
         const H_FALLBACK = 15;
+        // Effective duration: the real tracked time once it's set, else the
+        // estimate. The timeline (sequencing, block end, overlaps, chip) uses it.
+        const effDur = (x: { realMin: number | null; estMin: number | null }) =>
+          x.realMin ?? x.estMin;
         // A habit's "Fecha planeada" lands on the viewed day with a clock time.
         const plannedHere = (h: Habit) =>
           !!h.planned && h.planned.includes("T") && etDayOf(h.planned) === data.date;
@@ -2020,7 +2024,7 @@ export default function Home() {
           let cursor = base[k];
           for (const h of grp) {
             const start = plannedHere(h) ? toMin(timeHHMM_ET(h.planned!)) : cursor;
-            const dur = h.estMin ?? H_FALLBACK;
+            const dur = effDur(h) ?? H_FALLBACK;
             placedDaily.push({ h, min: start, endMin: start + dur });
             cursor = Math.max(cursor, start) + dur;
           }
@@ -2042,7 +2046,7 @@ export default function Home() {
         const events: Ev[] = [
           ...data.tasks.filter((t) => hasTime(t.date)).map((t) => {
             const min = toMin(timeHHMM_ET(t.date!));
-            return { kind: "task" as const, id: t.id, t, min, endMin: min + (t.estMin ?? 0) };
+            return { kind: "task" as const, id: t.id, t, min, endMin: min + (effDur(t) ?? 0) };
           }),
           ...timedEvs.map((e) => ({
             kind: "cal" as const, id: "cal-" + e.id, ev: e, min: toMin(timeHHMM_ET(e.start)),
@@ -2052,7 +2056,7 @@ export default function Home() {
           })),
           ...otherTimed.map((h) => {
             const min = toMin(timeHHMM_ET(h.planned!));
-            return { kind: "habit" as const, id: h.id, h, min, endMin: min + (h.estMin ?? H_FALLBACK) };
+            return { kind: "habit" as const, id: h.id, h, min, endMin: min + (effDur(h) ?? H_FALLBACK) };
           }),
         ];
         // Everything in order by time; on a tie, habits lead (routines frame the slot).
@@ -2062,7 +2066,12 @@ export default function Home() {
         events.forEach((e, i) => {
           const next = events[i + 1];
           const end = e.kind === "cal" ? undefined : e.endMin;
-          const hasDur = e.kind === "task" ? !!e.t.estMin : e.kind === "habit" ? !!e.h.estMin : false;
+          const hasDur =
+            e.kind === "task"
+              ? effDur(e.t) != null
+              : e.kind === "habit"
+              ? effDur(e.h) != null
+              : false;
           if (hasDur && end != null && next && end > next.min) overlaps.add(e.id);
         });
 
@@ -2249,7 +2258,9 @@ export default function Home() {
                       >
                         <div className="dayblock-time">
                           {fmtClock(e.min)}
-                          {h.estMin ? <span className="dayblock-end">{fmtClock(e.endMin)}</span> : null}
+                          {effDur(h) ? (
+                            <span className="dayblock-end">{fmtClock(e.endMin)}</span>
+                          ) : null}
                         </div>
                         <div className="dayblock-body">
                           <span
@@ -2269,8 +2280,8 @@ export default function Home() {
                               {nonDaily && (
                                 <span className="cad-chip">{cadenceES(h.cadence)}</span>
                               )}
-                              {h.estMin ? (
-                                <span className="agenda-time">{fmtMin(h.estMin)}</span>
+                              {effDur(h) ? (
+                                <span className="agenda-time">{fmtMin(effDur(h)!)}</span>
                               ) : null}
                               {overlaps.has(e.id) && (
                                 <span className="overlap-tag">se solapa</span>
@@ -2285,8 +2296,9 @@ export default function Home() {
                 ) : (
                   (() => {
                     const t = e.t;
+                    const dur = effDur(t);
                     const start = clockES(t.date ?? "");
-                    const end = t.estMin ? clockPlusES(t.date ?? "", t.estMin) : "";
+                    const end = dur ? clockPlusES(t.date ?? "", dur) : "";
                     return (
                       <div
                         key={e.id}
@@ -2304,8 +2316,8 @@ export default function Home() {
                           <div className="dayblock-main">
                             <span className="dayblock-title">{t.title}</span>
                             <div className="dayblock-meta">
-                              {t.estMin ? (
-                                <span className="agenda-time">{fmtMin(t.estMin)}</span>
+                              {dur ? (
+                                <span className="agenda-time">{fmtMin(dur)}</span>
                               ) : null}
                               {overlaps.has(e.id) && (
                                 <span className="overlap-tag">se solapa</span>
