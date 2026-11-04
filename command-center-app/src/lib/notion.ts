@@ -1,5 +1,5 @@
 import { Client } from "@notionhq/client";
-import { buildETDateTime } from "./planning";
+import { buildETDateTime, weekBounds } from "./planning";
 
 const notion = new Client({ auth: process.env.NOTION_TOKEN });
 
@@ -58,9 +58,21 @@ export type Habit = {
   order: number | null;
   itemId: string | null; // the related Habit definition's page id
   timeOfDay: string | null; // morning / afternoon / night (from the habit)
-  estMin: number | null; // estimated minutes (from the habit)
+  estMin: number | null; // estimated minutes (this block's own, else the habit's)
   realMin: number | null; // Tiempo real (min) — tracked by the app timer
   planned: string | null; // "Fecha planeada": ISO date or datetime, or null
+  weeklyHours: number | null; // the habit's weekly-hours goal, if it has one
+};
+
+// An hours-based habit (weekly hours goal), surfaced so the app can show a
+// progress card and create session blocks on demand.
+export type HoursHabit = {
+  id: string;
+  name: string;
+  goalMin: number; // weekly goal in minutes
+  loggedMin: number; // minutes logged across this week's blocks
+  timeOfDay: string | null;
+  order: number | null;
 };
 
 // A habit definition (from the Habits database), for the Perfil view.
@@ -73,6 +85,7 @@ export type HabitDef = {
   order: number | null;
   timeOfDay: string | null; // morning / afternoon / night
   estMin: number | null;
+  weeklyHours: number | null; // "Meta horas semanales" (hours-based habit)
   lastDone: string | null; // ISO date (rollup), or null
   timesDone: number | null; // count of completed check-ins (rollup)
   constancia: number | null; // 0–1 percent of check-ins done (rollup)
@@ -204,30 +217,33 @@ export async function getTasks(dateISO: string, includeOverdue: boolean): Promis
 
 // Per-habit extras (Time of Day, estimated minutes) keyed by the habit page id,
 // so check-ins can be enriched with fields that live on the Habit definition.
-async function loadHabitMaps(): Promise<{
+type HabitMaps = {
   est: Map<string, number | null>;
   tod: Map<string, string | null>;
-}> {
+  goal: Map<string, number | null>; // weekly hours goal
+};
+async function loadHabitMaps(): Promise<HabitMaps> {
   const res = await notion.databases.query({
     database_id: HABITS_DB,
     page_size: 200,
   });
   const est = new Map<string, number | null>();
   const tod = new Map<string, string | null>();
+  const goal = new Map<string, number | null>();
   for (const p of res.results as any[]) {
     const props = p.properties ?? {};
     est.set(p.id, props["Tiempo estimado (min)"]?.number ?? null);
     tod.set(p.id, props["Time of Day"]?.select?.name ?? null);
+    goal.set(p.id, props["Meta horas semanales"]?.number ?? null);
   }
-  return { est, tod };
+  return { est, tod, goal };
 }
 
-function mapCheckin(
-  page: any,
-  maps: { est: Map<string, number | null>; tod: Map<string, string | null> }
-): Habit {
+function mapCheckin(page: any, maps: HabitMaps): Habit {
   const props = page.properties ?? {};
   const itemId = props["Item"]?.relation?.[0]?.id ?? null;
+  // The block's own estimate wins; otherwise fall back to the habit's.
+  const ownEst = props["Tiempo estimado (min)"]?.number ?? null;
   return {
     id: page.id,
     title: plainTitle(props["Log"]) || "(sin título)",
@@ -236,9 +252,10 @@ function mapCheckin(
     order: props["Order"]?.number ?? null,
     itemId,
     timeOfDay: (itemId && maps.tod.get(itemId)) ?? null,
-    estMin: (itemId && maps.est.get(itemId)) ?? null,
+    estMin: ownEst ?? (itemId ? maps.est.get(itemId) ?? null : null),
     realMin: props["Tiempo real (min)"]?.number ?? null,
     planned: props["Fecha planeada"]?.date?.start ?? null,
+    weeklyHours: (itemId && maps.goal.get(itemId)) ?? null,
   };
 }
 
@@ -300,6 +317,107 @@ export async function setCheckinPlanned(id: string, iso: string | null): Promise
   });
 }
 
+// Set (or clear) a check-in's own estimated minutes ("Tiempo estimado (min)").
+export async function setCheckinEst(id: string, minutes: number | null): Promise<void> {
+  await notion.pages.update({
+    page_id: id,
+    properties: { "Tiempo estimado (min)": { number: minutes ?? null } },
+  });
+}
+
+// ISO week key ("YYYY-Www"), matching the generator's period key for weekly.
+function isoWeekKey(dayISO: string): string {
+  const [y, m, d] = dayISO.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  const day = (dt.getUTCDay() + 6) % 7; // Mon=0..Sun=6
+  dt.setUTCDate(dt.getUTCDate() - day + 3); // nearest Thursday
+  const isoYear = dt.getUTCFullYear();
+  const firstThu = new Date(Date.UTC(isoYear, 0, 4));
+  const firstDay = (firstThu.getUTCDay() + 6) % 7;
+  firstThu.setUTCDate(firstThu.getUTCDate() - firstDay + 3);
+  const week = 1 + Math.round((dt.getTime() - firstThu.getTime()) / 604800000);
+  return `${isoYear}-W${String(week).padStart(2, "0")}`;
+}
+
+// Active hours-based habits (those with a weekly-hours goal), with the minutes
+// already logged across the given week's blocks — for the progress cards.
+export async function getHoursHabits(
+  weekStartISO: string,
+  weekEndISO: string
+): Promise<HoursHabit[]> {
+  const [defs, blocks] = await Promise.all([
+    notion.databases.query({
+      database_id: HABITS_DB,
+      filter: {
+        and: [
+          { property: "Active", checkbox: { equals: true } },
+          { property: "Meta horas semanales", number: { greater_than: 0 } },
+        ],
+      },
+      page_size: 100,
+    }),
+    notion.databases.query({
+      database_id: CHECKINS_DB,
+      filter: {
+        and: [
+          { property: "Period start", date: { on_or_before: weekEndISO } },
+          { property: "Period end", date: { on_or_after: weekStartISO } },
+          { property: "Cadence", select: { equals: "Weekly" } },
+        ],
+      },
+      page_size: 200,
+    }),
+  ]);
+
+  // Sum logged minutes per habit id across the week's blocks.
+  const logged = new Map<string, number>();
+  for (const p of blocks.results as any[]) {
+    const props = p.properties ?? {};
+    const itemId = props["Item"]?.relation?.[0]?.id;
+    const real = props["Tiempo real (min)"]?.number ?? 0;
+    if (!itemId || !real) continue;
+    logged.set(itemId, (logged.get(itemId) ?? 0) + real);
+  }
+
+  return (defs.results as any[])
+    .map((p) => {
+      const props = p.properties ?? {};
+      return {
+        id: p.id,
+        name: plainTitle(props["Name"]) || "(sin nombre)",
+        goalMin: Math.round((props["Meta horas semanales"]?.number ?? 0) * 60),
+        loggedMin: logged.get(p.id) ?? 0,
+        timeOfDay: props["Time of Day"]?.select?.name ?? null,
+        order: props["Order"]?.number ?? null,
+      };
+    })
+    .sort((a, b) => (a.order ?? 9999) - (b.order ?? 9999) || a.name.localeCompare(b.name));
+}
+
+// Create a new session block (a weekly check-in) for an hours-habit on a day.
+export async function createHabitBlock(itemId: string, dayISO: string): Promise<Habit> {
+  const [maps, habitPage] = await Promise.all([
+    loadHabitMaps(),
+    notion.pages.retrieve({ page_id: itemId }) as Promise<any>,
+  ]);
+  const name = plainTitle(habitPage.properties?.["Name"]) || "(sin nombre)";
+  const { start, end } = weekBounds(dayISO);
+  const page: any = await notion.pages.create({
+    parent: { database_id: CHECKINS_DB },
+    properties: {
+      Log: { title: [{ text: { content: name } }] },
+      Item: { relation: [{ id: itemId }] },
+      Period: { rich_text: [{ text: { content: isoWeekKey(dayISO) } }] },
+      "Period start": { date: { start } },
+      "Period end": { date: { start: end } },
+      Cadence: { select: { name: "Weekly" } },
+      Done: { checkbox: false },
+      "Fecha planeada": { date: { start: dayISO } },
+    },
+  });
+  return mapCheckin(page, maps);
+}
+
 // Constancia (done ÷ due) per habit, counting only check-ins whose period has
 // already started (Period start ≤ today). Pre-generated future check-ins exist
 // for the Día view but must not drag the percentage down before their day.
@@ -358,6 +476,7 @@ export async function getAllHabits(): Promise<HabitDef[]> {
       order: p["Order"]?.number ?? null,
       timeOfDay: p["Time of Day"]?.select?.name ?? null,
       estMin: p["Tiempo estimado (min)"]?.number ?? null,
+      weeklyHours: p["Meta horas semanales"]?.number ?? null,
       lastDone: rollupDate(p["Last done"]),
       timesDone: rollupNumber(p["Times done"]),
       // computed over past/current periods only (falls back to the rollup)
@@ -424,6 +543,7 @@ export async function createHabit(
     order: opts.order ?? null,
     timeOfDay: opts.timeOfDay ?? null,
     estMin: opts.estMin ?? null,
+    weeklyHours: null,
     lastDone: null,
     timesDone: 0,
     constancia: 0,
@@ -644,6 +764,11 @@ export async function setTaskFields(id: string, fields: TaskFields): Promise<voi
   if ("impact" in fields) properties.Impact = { number: fields.impact ?? null };
   if ("effort" in fields) properties.Effort = { number: fields.effort ?? null };
   await notion.pages.update({ page_id: id, properties });
+}
+
+// Move a habit check-in (session block) to Notion's trash.
+export async function deleteCheckin(id: string): Promise<void> {
+  await notion.pages.update({ page_id: id, archived: true });
 }
 
 // Set the actual tracked minutes on a habit check-in ("Tiempo real (min)").

@@ -29,6 +29,7 @@ type PlanData = {
   week: Task[];
   pool: Task[];
   weekHabits: Habit[];
+  hoursHabits: HoursHabit[];
 };
 type Habit = {
   id: string;
@@ -41,6 +42,15 @@ type Habit = {
   estMin: number | null;
   realMin: number | null;
   planned: string | null; // "Fecha planeada": ISO date or datetime, or null
+  weeklyHours: number | null; // the habit's weekly-hours goal, if any
+};
+type HoursHabit = {
+  id: string;
+  name: string;
+  goalMin: number;
+  loggedMin: number;
+  timeOfDay: string | null;
+  order: number | null;
 };
 type HabitDef = {
   id: string;
@@ -63,7 +73,13 @@ type CalEvent = {
   allDay: boolean;
   htmlLink?: string;
 };
-type Data = { today: string; date: string; tasks: Task[]; habits: Habit[] };
+type Data = {
+  today: string;
+  date: string;
+  tasks: Task[];
+  habits: Habit[];
+  hoursHabits: HoursHabit[];
+};
 type TaskDetailData = {
   id: string;
   url: string | null;
@@ -840,6 +856,40 @@ export default function Home() {
     saveHabitPlanned(h, dayISO);
   }
 
+  // Create a new session block for an hours-habit on a day (drag the goal card).
+  async function createBlock(itemId: string, dayISO: string) {
+    try {
+      const res = await fetch("/api/checkin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ op: "block", itemId, day: dayISO }),
+      });
+      if (!res.ok) throw new Error();
+      const { block } = await res.json();
+      setPlanData((p) => (p ? { ...p, weekHabits: [...p.weekHabits, block] } : p));
+    } catch {
+      setError("No se pudo crear el bloque");
+      reloadCurrent();
+    }
+  }
+  // Delete a session block (hours-habit).
+  async function removeBlock(id: string) {
+    setData((d) => (d ? { ...d, habits: d.habits.filter((x) => x.id !== id) } : d));
+    setPlanData((p) => (p ? { ...p, weekHabits: p.weekHabits.filter((x) => x.id !== id) } : p));
+    if (sheet === "habit") setSheet(null);
+    try {
+      const res = await fetch("/api/checkin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ op: "delete", id }),
+      });
+      if (!res.ok) throw new Error();
+    } catch {
+      setError("No se pudo borrar el bloque");
+      reloadCurrent();
+    }
+  }
+
   // Manually set the tracked minutes (for when the timer wasn't used): patch
   // optimistically and write to Notion.
   async function saveRealMinutes(kind: "task" | "habit", id: string, minutes: number | null) {
@@ -864,26 +914,50 @@ export default function Home() {
       reloadCurrent();
     }
   }
-  // "Tiempo real" row: timer + editable hours/minutes, with the estimate shown.
-  function RealTimeEditor({
-    kind,
-    live,
+  // Set the estimated minutes (task's "Estimated Time" or a block's own estimate).
+  async function saveEst(kind: "task" | "habit", id: string, minutes: number | null) {
+    if (kind === "task") applyPatch(id, { estMin: minutes });
+    else patchHabit(id, { estMin: minutes });
+    try {
+      const res =
+        kind === "task"
+          ? await fetch("/api/task", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ id, fields: { estMin: minutes } }),
+            })
+          : await fetch("/api/checkin", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ id, est: minutes }),
+            });
+      if (!res.ok) throw new Error();
+    } catch {
+      setError("No se pudo guardar");
+      reloadCurrent();
+    }
+  }
+  // Generic hours+minutes editor; commits total minutes (or null) on blur.
+  function HMEditor({
+    minutes,
+    onCommit,
+    lead,
   }: {
-    kind: "task" | "habit";
-    live: { id: string; title: string; realMin: number | null; estMin: number | null };
+    minutes: number | null;
+    onCommit: (m: number | null) => void;
+    lead?: React.ReactNode;
   }) {
-    const r = live.realMin;
     const [hStr, setHStr] = useState("");
     const [mStr, setMStr] = useState("");
     useEffect(() => {
-      setHStr(r && r >= 60 ? String(Math.floor(r / 60)) : "");
-      setMStr(r ? (r % 60 ? String(r % 60) : "") : "");
-    }, [r]);
+      setHStr(minutes && minutes >= 60 ? String(Math.floor(minutes / 60)) : "");
+      setMStr(minutes ? (minutes % 60 ? String(minutes % 60) : "") : "");
+    }, [minutes]);
     const commit = () => {
       const hv = hStr === "" ? 0 : Math.max(0, Math.floor(Number(hStr) || 0));
       const mv = mStr === "" ? 0 : Math.max(0, Math.floor(Number(mStr) || 0));
       const total = hv * 60 + mv;
-      saveRealMinutes(kind, live.id, total > 0 ? total : null);
+      onCommit(total > 0 ? total : null);
     };
     const onNum = (set: (v: string) => void) => (e: React.ChangeEvent<HTMLInputElement>) => {
       const v = e.target.value;
@@ -891,37 +965,66 @@ export default function Home() {
       set(v);
     };
     return (
-      <div className="q">
-        <div className="q-label">Tiempo real</div>
-        <div className="chips" style={{ alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          <TimerButton kind={kind} id={live.id} title={live.title} />
-          <input
-            className="min-input sm"
-            type="number"
-            inputMode="numeric"
-            min={0}
-            value={hStr}
-            onChange={onNum(setHStr)}
-            onBlur={commit}
-            aria-label="horas"
-          />
-          <span className="min-unit">h</span>
-          <input
-            className="min-input sm"
-            type="number"
-            inputMode="numeric"
-            min={0}
-            value={mStr}
-            onChange={onNum(setMStr)}
-            onBlur={commit}
-            aria-label="minutos"
-          />
-          <span className="min-unit">min</span>
-          {live.estMin ? (
-            <span className="time-compare">/ {fmtMin(live.estMin)} est.</span>
-          ) : null}
-        </div>
+      <div className="chips" style={{ alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        {lead}
+        <input
+          className="min-input sm"
+          type="number"
+          inputMode="numeric"
+          min={0}
+          value={hStr}
+          onChange={onNum(setHStr)}
+          onBlur={commit}
+          aria-label="horas"
+        />
+        <span className="min-unit">h</span>
+        <input
+          className="min-input sm"
+          type="number"
+          inputMode="numeric"
+          min={0}
+          value={mStr}
+          onChange={onNum(setMStr)}
+          onBlur={commit}
+          aria-label="minutos"
+        />
+        <span className="min-unit">min</span>
       </div>
+    );
+  }
+  // "Tiempo real" row: timer + editable hours/minutes. On habits, also an
+  // editable "Tiempo estimado" (per block); tasks keep their estimate chips.
+  function RealTimeEditor({
+    kind,
+    live,
+    editableEst,
+  }: {
+    kind: "task" | "habit";
+    live: { id: string; title: string; realMin: number | null; estMin: number | null };
+    editableEst?: boolean;
+  }) {
+    return (
+      <>
+        {editableEst && (
+          <div className="q">
+            <div className="q-label">Tiempo estimado</div>
+            <HMEditor minutes={live.estMin} onCommit={(m) => saveEst(kind, live.id, m)} />
+          </div>
+        )}
+        <div className="q">
+          <div className="q-label">Tiempo real</div>
+          <div className="chips" style={{ alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <HMEditor
+              minutes={live.realMin}
+              onCommit={(m) => saveRealMinutes(kind, live.id, m)}
+              lead={<TimerButton kind={kind} id={live.id} title={live.title} />}
+            />
+            {!editableEst && live.estMin ? (
+              <span className="time-compare">/ {fmtMin(live.estMin)} est.</span>
+            ) : null}
+          </div>
+        </div>
+      </>
     );
   }
 
@@ -1639,6 +1742,8 @@ export default function Home() {
                       const hab = (planData.weekHabits ?? []).find((x) => x.id === id);
                       endDrag();
                       if (task) moveTask(task, planData.bucket);
+                      else if (hab && hab.weeklyHours)
+                        removeBlock(hab.id); // drag a block off → delete it
                       else if (hab && hab.planned) saveHabitDay(hab, null);
                     }}
                   >
@@ -1650,19 +1755,21 @@ export default function Home() {
                         (a.estMin ?? 9999) - (b.estMin ?? 9999)
                     );
                     // Non-daily habits that aren't placed on a day of THIS week
-                    // (no planned date, or one that falls outside the shown week)
-                    // and aren't done live in the pool, ready to be assigned.
+                    // (no planned date, outside the shown week), not done, and not
+                    // hours-based (those get a goal card instead) live in the pool.
                     const habitPool = (planData.weekHabits ?? [])
                       .filter(
                         (h) =>
                           !h.done &&
+                          !h.weeklyHours &&
                           !planData.weekDays.includes((h.planned ?? "").slice(0, 10))
                       )
                       .sort(byCadence);
+                    const goalCards = planData.hoursHabits ?? [];
                     const poolMins =
                       sortedPool.reduce((s, t) => s + (t.estMin ?? 0), 0) +
                       habitPool.reduce((s, h) => s + (h.estMin ?? 0), 0);
-                    const poolCount = sortedPool.length + habitPool.length;
+                    const poolCount = sortedPool.length + habitPool.length + goalCards.length;
                     return (
                       <>
                         <div className="section-head" style={{ marginTop: 0 }}>
@@ -1678,6 +1785,38 @@ export default function Home() {
                           <div className="empty">¡Semana repartida! ✦</div>
                         ) : (
                           <div className="list">
+                            {goalCards.map((g) => {
+                              const met = g.loggedMin >= g.goalMin;
+                              const pctv = Math.min(
+                                100,
+                                Math.round((g.loggedMin / g.goalMin) * 100)
+                              );
+                              return (
+                                <div
+                                  key={g.id}
+                                  className={`goal-card ${met ? "met" : ""}`}
+                                  draggable
+                                  onDragStart={(e) => {
+                                    e.dataTransfer.setData("text/plain", "goal:" + g.id);
+                                    e.dataTransfer.effectAllowed = "copy";
+                                    dragIdRef.current = "goal:" + g.id;
+                                  }}
+                                  onDragEnd={endDrag}
+                                >
+                                  <div className="goal-head">
+                                    <span className="goal-name">{g.name}</span>
+                                    <span className="goal-nums">
+                                      {met && "✓ "}
+                                      {fmtMin(g.loggedMin) || "0m"} / {fmtMin(g.goalMin)}
+                                    </span>
+                                  </div>
+                                  <div className="goal-bar">
+                                    <span style={{ width: `${pctv}%` }} />
+                                  </div>
+                                  <div className="goal-hint">Arrastra a un día para un bloque</div>
+                                </div>
+                              );
+                            })}
                             {sortedPool.map((t) => (
                               <div
                                 key={t.id}
@@ -1852,11 +1991,16 @@ export default function Home() {
                           onDrop={(e) => {
                             e.preventDefault();
                             const id = e.dataTransfer.getData("text/plain");
+                            endDrag();
+                            // Dragging an hours-habit goal card creates a block.
+                            if (id.startsWith("goal:")) {
+                              createBlock(id.slice(5), iso);
+                              return;
+                            }
                             const task =
                               planData.pool.find((x) => x.id === id) ??
                               planData.week.find((x) => x.id === id);
                             const hab = (planData.weekHabits ?? []).find((x) => x.id === id);
-                            endDrag();
                             if (task && (task.date ?? "").slice(0, 10) !== iso) {
                               assignTaskToDay(task, iso);
                             } else if (hab && (hab.planned ?? "").slice(0, 10) !== iso) {
@@ -2837,12 +2981,19 @@ export default function Home() {
                       )}
                     </div>
                   </div>
-                  <RealTimeEditor kind="habit" live={live} />
+                  <RealTimeEditor kind="habit" live={live} editableEst />
                   <p className="hint">
-                    {daily
+                    {live.weeklyHours
+                      ? "Bloque de un hábito por horas; el tiempo real suma a tu meta de la semana."
+                      : daily
                       ? "Si no le das hora propia, se acomoda solo en su franja usando su duración."
                       : "Dale una hora para verlo en tu día; si no, vive en “Sin hora”."}
                   </p>
+                  {live.weeklyHours ? (
+                    <button className="btn-text-danger" onClick={() => removeBlock(live.id)}>
+                      Borrar bloque
+                    </button>
+                  ) : null}
                 </>
               );
             })()}
