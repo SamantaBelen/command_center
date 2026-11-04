@@ -2176,15 +2176,23 @@ export default function Home() {
                           >
                             <CheckMark />
                           </span>
-                          <span className="dayblock-title" onClick={() => openHabitSheet(h)}>
-                            {h.title}
-                          </span>
-                          {nonDaily && (
-                            <span className="cad-chip">{cadenceES(h.cadence)}</span>
-                          )}
-                          {h.estMin ? <span className="agenda-time">{fmtMin(h.estMin)}</span> : null}
-                          {overlaps.has(e.id) && <span className="overlap-tag">se solapa</span>}
-                          <TimerButton kind="habit" id={h.id} title={h.title} compact />
+                          <div className="dayblock-main">
+                            <span className="dayblock-title" onClick={() => openHabitSheet(h)}>
+                              {h.title}
+                            </span>
+                            <div className="dayblock-meta">
+                              {nonDaily && (
+                                <span className="cad-chip">{cadenceES(h.cadence)}</span>
+                              )}
+                              {h.estMin ? (
+                                <span className="agenda-time">{fmtMin(h.estMin)}</span>
+                              ) : null}
+                              {overlaps.has(e.id) && (
+                                <span className="overlap-tag">se solapa</span>
+                              )}
+                              <TimerButton kind="habit" id={h.id} title={h.title} compact />
+                            </div>
+                          </div>
                         </div>
                       </div>
                     );
@@ -2208,10 +2216,18 @@ export default function Home() {
                         </div>
                         <div className="dayblock-body">
                           <i className="dot" style={{ background: statusColor(t.status) }} />
-                          <span className="dayblock-title">{t.title}</span>
-                          {t.estMin ? <span className="agenda-time">{fmtMin(t.estMin)}</span> : null}
-                          {overlaps.has(e.id) && <span className="overlap-tag">se solapa</span>}
-                          <TimerButton kind="task" id={t.id} title={t.title} compact />
+                          <div className="dayblock-main">
+                            <span className="dayblock-title">{t.title}</span>
+                            <div className="dayblock-meta">
+                              {t.estMin ? (
+                                <span className="agenda-time">{fmtMin(t.estMin)}</span>
+                              ) : null}
+                              {overlaps.has(e.id) && (
+                                <span className="overlap-tag">se solapa</span>
+                              )}
+                              <TimerButton kind="task" id={t.id} title={t.title} compact />
+                            </div>
+                          </div>
                         </div>
                       </div>
                     );
