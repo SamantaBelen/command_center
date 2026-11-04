@@ -1798,7 +1798,7 @@ export default function Home() {
                                   draggable
                                   onDragStart={(e) => {
                                     e.dataTransfer.setData("text/plain", "goal:" + g.id);
-                                    e.dataTransfer.effectAllowed = "copy";
+                                    e.dataTransfer.effectAllowed = "move";
                                     dragIdRef.current = "goal:" + g.id;
                                   }}
                                   onDragEnd={endDrag}
