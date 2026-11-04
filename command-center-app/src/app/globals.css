@@ -902,6 +902,7 @@ textarea,
   width: 68px;
   font-family: inherit;
   font-size: 16px;
+  text-align: center;
   padding: 8px 10px;
   border: 1px solid var(--line);
   border-radius: 10px;
@@ -909,6 +910,9 @@ textarea,
   color: var(--ink);
   font-variant-numeric: tabular-nums;
   -moz-appearance: textfield;
+}
+.min-input.sm {
+  width: 58px;
 }
 .min-input::-webkit-outer-spin-button,
 .min-input::-webkit-inner-spin-button {
