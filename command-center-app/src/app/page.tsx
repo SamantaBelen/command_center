@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { suggestPriority, buildETDateTime, weekBounds } from "@/lib/planning";
+import ViajesView from "./viajes-view";
 
 const NAME = "Samanta";
 
@@ -479,7 +480,7 @@ export default function Home() {
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const [view, setView] = useState<
-    "hoy" | "semana" | "planear" | "dia" | "perfil"
+    "hoy" | "semana" | "planear" | "dia" | "perfil" | "viajes"
   >("hoy");
   const [profileHabits, setProfileHabits] = useState<HabitDef[] | null>(null);
   const [profileLoading, setProfileLoading] = useState(false);
@@ -1311,6 +1312,8 @@ export default function Home() {
     } else if (tab === "pendientes") {
       setView("semana");
       loadWeek();
+    } else if (tab === "viajes") {
+      setView("viajes");
     } else {
       setView("perfil");
       loadHabits();
@@ -2642,6 +2645,8 @@ export default function Home() {
         );
       })()}
 
+      {view === "viajes" && <ViajesView />}
+
       {/* add task / event / habit */}
       {(view === "dia" || view === "planear") && fabOpen && (
         <>
@@ -3309,6 +3314,17 @@ function BottomNav({
             <path d="M11 6h9M11 12h9M11 18h9" />
           </svg>
           Pendientes
+        </button>
+        <button
+          className={`tab ${view === "viajes" ? "active" : ""}`}
+          onClick={() => onNav("viajes")}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" {...sw}>
+            <rect x="4" y="8" width="16" height="11" rx="2" />
+            <path d="M9 8V6a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2" />
+            <path d="M12 12v3" />
+          </svg>
+          Viajes
         </button>
         <button
           className={`tab ${view === "perfil" ? "active" : ""}`}
