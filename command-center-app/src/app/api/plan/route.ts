@@ -5,10 +5,21 @@ import { weekBounds } from "@/lib/planning";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+function safeTz(tz: string | null): string | undefined {
+  if (!tz) return undefined;
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: tz });
+    return tz;
+  } catch {
+    return undefined;
+  }
+}
+
 export async function GET(req: Request) {
   try {
-    const today = todayET();
-    const which = new URL(req.url).searchParams.get("week") === "next" ? "next" : "this";
+    const url = new URL(req.url);
+    const today = todayET(safeTz(url.searchParams.get("tz")));
+    const which = url.searchParams.get("week") === "next" ? "next" : "this";
     const offset = which === "next" ? 7 : 0;
 
     // base date = today shifted by the week offset

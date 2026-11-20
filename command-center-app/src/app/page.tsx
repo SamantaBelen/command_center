@@ -773,9 +773,10 @@ export default function Home() {
   const loadPlan = useCallback(async (which: "this" | "next" = "this") => {
     setPlanLoading(true);
     try {
-      const res = await fetch(`/api/plan?week=${which === "next" ? "next" : "this"}`, {
-        cache: "no-store",
-      });
+      const res = await fetch(
+        `/api/plan?week=${which === "next" ? "next" : "this"}&tz=${encodeURIComponent(TZ)}`,
+        { cache: "no-store" },
+      );
       if (res.status === 401) {
         window.location.href = "/login";
         return;
