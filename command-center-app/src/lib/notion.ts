@@ -8,9 +8,9 @@ const CHECKINS_DB = process.env.NOTION_CHECKINS_DB ?? "25c3317dc9c7430a885c0aa6b
 const HABITS_DB = process.env.NOTION_HABITS_DB ?? "1265804c0ee44dfeb9532b677cba03da";
 
 // "Hoy" in America/New_York (Eastern), regardless of the server's UTC clock.
-export function todayET(): string {
+export function todayET(tz: string = "America/New_York"): string {
   return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/New_York",
+    timeZone: tz,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -25,10 +25,10 @@ function addDaysISO(iso: string, n: number): string {
 // The Eastern calendar date (YYYY-MM-DD) a stored date/datetime falls on. A
 // date-only value passes through; a datetime is converted from its own offset
 // to Eastern, so an 8pm-ET task (which is next-day UTC) still counts as today.
-function etDayOf(dateStr: string): string {
+function etDayOf(dateStr: string, tz: string = "America/New_York"): string {
   if (dateStr.length === 10) return dateStr;
   return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/New_York",
+    timeZone: tz,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -815,4 +815,202 @@ export async function toggleCheckin(id: string, done: boolean): Promise<void> {
     page_id: id,
     properties: { Done: { checkbox: done } },
   });
+}
+
+// ---- Trips / Itinerario ----------------------------------------------------
+
+const TRIPS_DB = process.env.NOTION_TRIPS_DB ?? "41d2cd384e9781fdbeeac90b4686100e";
+const ITINERARY_DB = process.env.NOTION_ITINERARY_DB ?? "41d2cd384e9781a799dbf52715e94e62";
+const NOTION_VERSION = "2022-06-28";
+
+export type Trip = {
+  id: string;
+  name: string;
+  destino: string;
+  inicio: string | null; // YYYY-MM-DD
+  fin: string | null; // YYYY-MM-DD
+  notas: string;
+};
+
+export type TripEvent = {
+  id: string;
+  title: string;
+  date: string | null; // YYYY-MM-DD
+  hora: string; // free text like "09:30"
+  tipo: string | null;
+  lugar: string;
+  outfit: string;
+  photo: string | null; // first file url (expiring)
+  notas: string;
+  orden: number | null;
+};
+
+function plain(prop: any): string {
+  const a = prop?.rich_text ?? prop?.title ?? [];
+  return Array.isArray(a) ? a.map((x: any) => x.plain_text).join("").trim() : "";
+}
+function firstFileUrl(prop: any): string | null {
+  const files = prop?.files;
+  if (!Array.isArray(files) || files.length === 0) return null;
+  const f = files[0];
+  return f?.type === "external" ? f.external?.url ?? null : f?.file?.url ?? null;
+}
+
+function mapTrip(p: any): Trip {
+  const pr = p.properties ?? {};
+  return {
+    id: p.id,
+    name: plain(pr.Name) || "Viaje",
+    destino: plain(pr.Destino),
+    inicio: pr.Inicio?.date?.start ? pr.Inicio.date.start.slice(0, 10) : null,
+    fin: pr.Fin?.date?.start ? pr.Fin.date.start.slice(0, 10) : null,
+    notas: plain(pr.Notas),
+  };
+}
+
+function mapEvent(p: any): TripEvent {
+  const pr = p.properties ?? {};
+  return {
+    id: p.id,
+    title: plain(pr.Name) || "Evento",
+    date: pr.Fecha?.date?.start ? pr.Fecha.date.start.slice(0, 10) : null,
+    hora: plain(pr.Hora),
+    tipo: pr.Tipo?.select?.name ?? null,
+    lugar: plain(pr.Lugar),
+    outfit: plain(pr.Outfit),
+    photo: firstFileUrl(pr["Outfit foto"]),
+    notas: plain(pr.Notas),
+    orden: pr.Orden?.number ?? null,
+  };
+}
+
+export async function getTrips(): Promise<Trip[]> {
+  const res = await notion.databases.query({
+    database_id: TRIPS_DB,
+    sorts: [{ property: "Inicio", direction: "descending" }],
+    page_size: 100,
+  });
+  return res.results.map(mapTrip);
+}
+
+export async function getTrip(id: string): Promise<Trip> {
+  const p: any = await notion.pages.retrieve({ page_id: id });
+  return mapTrip(p);
+}
+
+export async function getTripEvents(tripId: string): Promise<TripEvent[]> {
+  const res = await notion.databases.query({
+    database_id: ITINERARY_DB,
+    filter: { property: "Trip", relation: { contains: tripId } },
+    page_size: 200,
+  });
+  const events = res.results.map(mapEvent);
+  events.sort((a, b) => {
+    const d = (a.date ?? "9999").localeCompare(b.date ?? "9999");
+    if (d) return d;
+    const h = (a.hora ?? "").localeCompare(b.hora ?? "");
+    if (h) return h;
+    return (a.orden ?? 0) - (b.orden ?? 0);
+  });
+  return events;
+}
+
+export async function createTrip(fields: {
+  name: string;
+  destino?: string;
+  inicio?: string | null;
+  fin?: string | null;
+  notas?: string;
+}): Promise<Trip> {
+  const properties: any = { Name: { title: [{ text: { content: fields.name } }] } };
+  if (fields.destino) properties.Destino = { rich_text: [{ text: { content: fields.destino } }] };
+  if (fields.inicio) properties.Inicio = { date: { start: fields.inicio } };
+  if (fields.fin) properties.Fin = { date: { start: fields.fin } };
+  if (fields.notas) properties.Notas = { rich_text: [{ text: { content: fields.notas } }] };
+  const page: any = await notion.pages.create({ parent: { database_id: TRIPS_DB }, properties });
+  return mapTrip(page);
+}
+
+export async function deleteTrip(id: string): Promise<void> {
+  await notion.pages.update({ page_id: id, archived: true });
+}
+
+export type EventFields = {
+  title: string;
+  date?: string | null;
+  hora?: string;
+  tipo?: string | null;
+  lugar?: string;
+  outfit?: string;
+  notas?: string;
+  orden?: number | null;
+  photoUploadId?: string | null; // Notion file_upload id
+  photoName?: string;
+};
+
+export async function createTripEvent(tripId: string, f: EventFields): Promise<TripEvent> {
+  const properties: any = {
+    Name: { title: [{ text: { content: f.title } }] },
+    Trip: { relation: [{ id: tripId }] },
+  };
+  if (f.date) properties.Fecha = { date: { start: f.date } };
+  if (f.hora) properties.Hora = { rich_text: [{ text: { content: f.hora } }] };
+  if (f.tipo) properties.Tipo = { select: { name: f.tipo } };
+  if (f.lugar) properties.Lugar = { rich_text: [{ text: { content: f.lugar } }] };
+  if (f.outfit) properties.Outfit = { rich_text: [{ text: { content: f.outfit } }] };
+  if (f.notas) properties.Notas = { rich_text: [{ text: { content: f.notas } }] };
+  if (typeof f.orden === "number") properties.Orden = { number: f.orden };
+  if (f.photoUploadId)
+    properties["Outfit foto"] = {
+      files: [
+        {
+          name: (f.photoName || "outfit").slice(0, 90),
+          type: "file_upload",
+          file_upload: { id: f.photoUploadId },
+        },
+      ],
+    };
+  const page: any = await notion.pages.create({
+    parent: { database_id: ITINERARY_DB },
+    properties,
+  });
+  return mapEvent(page);
+}
+
+export async function deleteTripEvent(id: string): Promise<void> {
+  await notion.pages.update({ page_id: id, archived: true });
+}
+
+// Upload bytes to Notion's File Upload API and return the file_upload id, for
+// attaching to a Files property.
+export async function uploadNotionFile(
+  buf: Buffer,
+  mediaType: string,
+  filename: string,
+): Promise<string> {
+  const token = process.env.NOTION_TOKEN;
+  const createRes = await fetch("https://api.notion.com/v1/file_uploads", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Notion-Version": NOTION_VERSION,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({ filename, content_type: mediaType }),
+  });
+  if (!createRes.ok) {
+    throw new Error(`Notion file_uploads ${createRes.status}: ${(await createRes.text()).slice(0, 180)}`);
+  }
+  const fu = await createRes.json();
+  const fd = new FormData();
+  fd.append("file", new Blob([buf], { type: mediaType }), filename);
+  const sendRes = await fetch(fu.upload_url, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Notion-Version": NOTION_VERSION },
+    body: fd,
+  });
+  if (!sendRes.ok) {
+    throw new Error(`Notion upload ${sendRes.status}: ${(await sendRes.text()).slice(0, 180)}`);
+  }
+  return fu.id as string;
 }

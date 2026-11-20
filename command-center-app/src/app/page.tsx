@@ -2,8 +2,17 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { suggestPriority, buildETDateTime, weekBounds } from "@/lib/planning";
+import ViajesView from "./viajes-view";
 
 const NAME = "Samanta";
+
+// The viewer's device timezone. Scheduled calendar events (absolute instants)
+// are shown in this zone, so a 3pm-NY meeting reads as 12pm when you're in LA.
+// Habits and tasks stay "floating" (their wall-clock number never changes).
+const TZ =
+  typeof Intl !== "undefined"
+    ? Intl.DateTimeFormat().resolvedOptions().timeZone
+    : "America/New_York";
 
 type Task = {
   id: string;
@@ -356,12 +365,42 @@ function etDayOf(iso: string): string {
     day: "2-digit",
   }).format(new Date(iso));
 }
+// Device-local variants, used for scheduled calendar events so their absolute
+// time renders in the viewer's current timezone.
+function dayOfLocal(iso: string): string {
+  if (iso.length === 10) return iso;
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: TZ,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(iso));
+}
+function clockLocal(dateStr: string): string {
+  if (!(dateStr.length > 10 && dateStr.includes("T"))) return "";
+  return new Intl.DateTimeFormat("es-ES", {
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: TZ,
+  }).format(new Date(dateStr));
+}
+function timeHHMM_local(dateStr: string): string {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: TZ,
+  }).formatToParts(new Date(dateStr));
+  const h = parts.find((p) => p.type === "hour")?.value ?? "00";
+  const m = parts.find((p) => p.type === "minute")?.value ?? "00";
+  return `${h}:${m}`;
+}
 function eventsForDay(events: CalEvent[], iso: string): CalEvent[] {
   return events
     .filter((e) =>
       e.allDay
         ? iso >= e.start.slice(0, 10) && iso < e.end.slice(0, 10)
-        : etDayOf(e.start) === iso
+        : dayOfLocal(e.start) === iso
     )
     .sort((a, b) => a.start.localeCompare(b.start));
 }
@@ -479,7 +518,7 @@ export default function Home() {
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const [view, setView] = useState<
-    "hoy" | "semana" | "planear" | "dia" | "perfil"
+    "hoy" | "semana" | "planear" | "dia" | "perfil" | "viajes"
   >("hoy");
   const [profileHabits, setProfileHabits] = useState<HabitDef[] | null>(null);
   const [profileLoading, setProfileLoading] = useState(false);
@@ -681,7 +720,8 @@ export default function Home() {
     setError(null);
     if (dateISO) setSwitching(true);
     try {
-      const url = dateISO ? `/api/today?date=${dateISO}` : "/api/today";
+      const tzq = `tz=${encodeURIComponent(TZ)}`;
+      const url = dateISO ? `/api/today?date=${dateISO}&${tzq}` : `/api/today?${tzq}`;
       const res = await fetch(url, { cache: "no-store" });
       if (res.status === 401) {
         window.location.href = "/login";
@@ -1311,6 +1351,8 @@ export default function Home() {
     } else if (tab === "pendientes") {
       setView("semana");
       loadWeek();
+    } else if (tab === "viajes") {
+      setView("viajes");
     } else {
       setView("perfil");
       loadHabits();
@@ -2023,10 +2065,10 @@ export default function Home() {
                                 <CalGlyph />
                                 <span className="agenda-title">{ev.title}</span>
                               </div>
-                              {!ev.allDay && clockES(ev.start) && (
+                              {!ev.allDay && clockLocal(ev.start) && (
                                 <span className="agenda-time">
-                                  {clockES(ev.start)}
-                                  {clockES(ev.end) ? ` – ${clockES(ev.end)}` : ""}
+                                  {clockLocal(ev.start)}
+                                  {clockLocal(ev.end) ? ` – ${clockLocal(ev.end)}` : ""}
                                 </span>
                               )}
                             </div>
@@ -2178,7 +2220,7 @@ export default function Home() {
         const dayEvs = dayEvents.filter((e) =>
           e.allDay
             ? data.date >= e.start.slice(0, 10) && data.date < e.end.slice(0, 10)
-            : etDayOf(e.start) === data.date
+            : dayOfLocal(e.start) === data.date
         );
         const allDayEvs = dayEvs.filter((e) => e.allDay);
         const timedEvs = dayEvs.filter((e) => !e.allDay);
@@ -2193,7 +2235,7 @@ export default function Home() {
             return { kind: "task" as const, id: t.id, t, min, endMin: min + (effDur(t) ?? 0) };
           }),
           ...timedEvs.map((e) => ({
-            kind: "cal" as const, id: "cal-" + e.id, ev: e, min: toMin(timeHHMM_ET(e.start)),
+            kind: "cal" as const, id: "cal-" + e.id, ev: e, min: toMin(timeHHMM_local(e.start)),
           })),
           ...placedDaily.map((p) => ({
             kind: "habit" as const, id: p.h.id, h: p.h, min: p.min, endMin: p.endMin,
@@ -2381,8 +2423,8 @@ export default function Home() {
                 e.kind === "cal" ? (
                   <div className="dayblock calblock" key={e.id} onClick={() => openEventSheet(e.ev)}>
                     <div className="dayblock-time">
-                      {clockES(e.ev.start)}
-                      {clockES(e.ev.end) && <span className="dayblock-end">{clockES(e.ev.end)}</span>}
+                      {clockLocal(e.ev.start)}
+                      {clockLocal(e.ev.end) && <span className="dayblock-end">{clockLocal(e.ev.end)}</span>}
                     </div>
                     <div className="dayblock-body">
                       <CalGlyph />
@@ -2641,6 +2683,8 @@ export default function Home() {
           </section>
         );
       })()}
+
+      {view === "viajes" && <ViajesView />}
 
       {/* add task / event / habit */}
       {(view === "dia" || view === "planear") && fabOpen && (
@@ -3309,6 +3353,17 @@ function BottomNav({
             <path d="M11 6h9M11 12h9M11 18h9" />
           </svg>
           Pendientes
+        </button>
+        <button
+          className={`tab ${view === "viajes" ? "active" : ""}`}
+          onClick={() => onNav("viajes")}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" {...sw}>
+            <rect x="4" y="8" width="16" height="11" rx="2" />
+            <path d="M9 8V6a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2" />
+            <path d="M12 12v3" />
+          </svg>
+          Viajes
         </button>
         <button
           className={`tab ${view === "perfil" ? "active" : ""}`}
