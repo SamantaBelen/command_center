@@ -8,9 +8,9 @@ const CHECKINS_DB = process.env.NOTION_CHECKINS_DB ?? "25c3317dc9c7430a885c0aa6b
 const HABITS_DB = process.env.NOTION_HABITS_DB ?? "1265804c0ee44dfeb9532b677cba03da";
 
 // "Hoy" in America/New_York (Eastern), regardless of the server's UTC clock.
-export function todayET(): string {
+export function todayET(tz: string = "America/New_York"): string {
   return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/New_York",
+    timeZone: tz,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -25,10 +25,10 @@ function addDaysISO(iso: string, n: number): string {
 // The Eastern calendar date (YYYY-MM-DD) a stored date/datetime falls on. A
 // date-only value passes through; a datetime is converted from its own offset
 // to Eastern, so an 8pm-ET task (which is next-day UTC) still counts as today.
-function etDayOf(dateStr: string): string {
+function etDayOf(dateStr: string, tz: string = "America/New_York"): string {
   if (dateStr.length === 10) return dateStr;
   return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/New_York",
+    timeZone: tz,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
