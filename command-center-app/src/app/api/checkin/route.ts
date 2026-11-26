@@ -6,6 +6,7 @@ import {
   setCheckinEst,
   createHabitBlock,
   deleteCheckin,
+  restoreCheckin,
 } from "@/lib/notion";
 
 export const runtime = "nodejs";
@@ -34,6 +35,11 @@ export async function POST(req: Request) {
     // Delete a session block.
     if (body?.op === "delete") {
       await deleteCheckin(id);
+      return NextResponse.json({ ok: true });
+    }
+    // Restore a deleted check-in (undo "No aplica hoy").
+    if (body?.op === "restore") {
+      await restoreCheckin(id);
       return NextResponse.json({ ok: true });
     }
     // "est" present (number or null) sets this block's estimated minutes.
