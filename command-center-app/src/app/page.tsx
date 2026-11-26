@@ -516,6 +516,7 @@ export default function Home() {
   const [activeHabit, setActiveHabit] = useState<Habit | null>(null);
   const [taskDetail, setTaskDetail] = useState<TaskDetailData | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmSkip, setConfirmSkip] = useState(false);
 
   const [view, setView] = useState<
     "hoy" | "semana" | "planear" | "dia" | "perfil" | "viajes"
@@ -714,6 +715,7 @@ export default function Home() {
     if (Date.now() - sheetOpenedAt.current < 400) return;
     setSheet(null);
     setConfirmDelete(false);
+    setConfirmSkip(false);
   }
 
   const load = useCallback(async (dateISO?: string) => {
@@ -927,6 +929,29 @@ export default function Home() {
       if (!res.ok) throw new Error();
     } catch {
       setError("No se pudo borrar el bloque");
+      reloadCurrent();
+    }
+  }
+
+  // "No aplica hoy": remove this day's check-in so the habit isn't counted as
+  // missed — it just didn't have to happen. Deleting the check-in drops it from
+  // the constancia denominator (excused, not failed).
+  async function skipHabitToday(h: Habit) {
+    setConfirmSkip(false);
+    setData((d) => (d ? { ...d, habits: d.habits.filter((x) => x.id !== h.id) } : d));
+    setPlanData((p) =>
+      p ? { ...p, weekHabits: p.weekHabits.filter((x) => x.id !== h.id) } : p,
+    );
+    if (sheet === "habit") setSheet(null);
+    try {
+      const res = await fetch("/api/checkin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ op: "delete", id: h.id }),
+      });
+      if (!res.ok) throw new Error();
+    } catch {
+      setError("No se pudo quitar el hábito del día");
       reloadCurrent();
     }
   }
@@ -3038,6 +3063,29 @@ export default function Home() {
                     <button className="btn-text-danger" onClick={() => removeBlock(live.id)}>
                       Borrar bloque
                     </button>
+                  ) : daily && !confirmSkip ? (
+                    <button
+                      className="btn btn-ghost"
+                      style={{ width: "100%", marginTop: 4 }}
+                      onClick={() => setConfirmSkip(true)}
+                    >
+                      No aplica hoy · quitar del día
+                    </button>
+                  ) : daily && confirmSkip ? (
+                    <div className="confirm">
+                      <p className="confirm-q">
+                        ¿Quitar “{live.title}” de este día? No cuenta como no hecho —
+                        solo como que hoy no tocaba. (Vuelve sola mañana.)
+                      </p>
+                      <div className="confirm-row">
+                        <button className="btn btn-ghost" onClick={() => setConfirmSkip(false)}>
+                          Cancelar
+                        </button>
+                        <button className="btn" onClick={() => skipHabitToday(live)}>
+                          Sí, quitar
+                        </button>
+                      </div>
+                    </div>
                   ) : null}
                 </>
               );
