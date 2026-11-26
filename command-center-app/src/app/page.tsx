@@ -517,6 +517,8 @@ export default function Home() {
   const [taskDetail, setTaskDetail] = useState<TaskDetailData | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmSkip, setConfirmSkip] = useState(false);
+  const [skipUndo, setSkipUndo] = useState<Habit | null>(null);
+  const skipTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [view, setView] = useState<
     "hoy" | "semana" | "planear" | "dia" | "perfil" | "viajes"
@@ -950,8 +952,36 @@ export default function Home() {
         body: JSON.stringify({ op: "delete", id: h.id }),
       });
       if (!res.ok) throw new Error();
+      // Offer an undo for a few seconds.
+      if (skipTimer.current) clearTimeout(skipTimer.current);
+      setSkipUndo(h);
+      skipTimer.current = setTimeout(() => setSkipUndo(null), 6000);
     } catch {
       setError("No se pudo quitar el hábito del día");
+      reloadCurrent();
+    }
+  }
+
+  // Undo a "No aplica hoy": restore the archived check-in and put it back.
+  async function undoSkip() {
+    const h = skipUndo;
+    if (!h) return;
+    if (skipTimer.current) clearTimeout(skipTimer.current);
+    setSkipUndo(null);
+    setData((d) =>
+      d
+        ? { ...d, habits: [...d.habits, h].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)) }
+        : d,
+    );
+    try {
+      const res = await fetch("/api/checkin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ op: "restore", id: h.id }),
+      });
+      if (!res.ok) throw new Error();
+    } catch {
+      setError("No se pudo deshacer");
       reloadCurrent();
     }
   }
@@ -2755,6 +2785,15 @@ export default function Home() {
           <path d="M12 5v14M5 12h14" />
         </svg>
       </button>
+
+      {skipUndo && (
+        <div className="snackbar" role="status">
+          <span>Quitado de hoy · no cuenta como no hecho</span>
+          <button className="snackbar-undo" onClick={undoSkip}>
+            Deshacer
+          </button>
+        </div>
+      )}
 
       <BottomNav view={view} onNav={onNav} />
 

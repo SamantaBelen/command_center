@@ -767,6 +767,11 @@ export async function setTaskFields(id: string, fields: TaskFields): Promise<voi
 }
 
 // Move a habit check-in (session block) to Notion's trash.
+// Restore a check-in that "No aplica hoy" archived (undo).
+export async function restoreCheckin(id: string): Promise<void> {
+  await notion.pages.update({ page_id: id, archived: false });
+}
+
 export async function deleteCheckin(id: string): Promise<void> {
   await notion.pages.update({ page_id: id, archived: true });
 }
