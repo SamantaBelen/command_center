@@ -138,3 +138,30 @@ html, body {
 .fin-debt-amt { font-size: 22px; font-weight: 700; color: var(--burgundy); }
 .fin-goal { display: flex; flex-direction: column; gap: 8px; }
 .fin-goal-amt { font-size: 14px; }
+
+/* interactive recurrentes */
+.fin-rec.tappable {
+  width: 100%;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+  color: var(--ink);
+}
+.fin-rec.tappable:active { transform: scale(0.99); }
+.fin-check {
+  flex: 0 0 auto;
+  width: 22px; height: 22px; border-radius: 999px;
+  border: 1.5px solid var(--line);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 700; color: #fff; background: transparent;
+}
+.fin-check.on { background: var(--green); border-color: var(--green); }
+.fin-rec.done {
+  background: var(--green-bg);
+  border-color: var(--green);
+}
+.fin-rec.done .fin-rec-name { color: var(--green); }
+.fin-rec.done .fin-rec-when { color: var(--green); }
+.fin-price { color: var(--gold); font-weight: 600; }
+
+.fin-rec-main { flex: 1 1 auto; }

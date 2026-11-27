@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import type { FinanceData } from "@/lib/notion";
+import { useMemo, useState } from "react";
+import type { FinanceData, Recurrente } from "@/lib/notion";
 
 const MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
 function monthLabel(ym: string): string {
@@ -14,7 +14,26 @@ const money = (n: number | null | undefined) =>
 type Tab = "mes" | "recurrentes" | "deudas";
 
 export default function Dashboard({ data }: { data: FinanceData }) {
-  const [tab, setTab] = useState<Tab>("mes");
+  const [tab, setTab] = useState<Tab>("recurrentes");
+  const [recs, setRecs] = useState(data.recurrentes);
+
+  async function toggleRec(r: Recurrente) {
+    const done = !r.listoMes;
+    const patch = (x: Recurrente) => (x.id === r.id ? { ...x, listoMes: done } : x);
+    setRecs((cur) => ({ ...cur, mensual: cur.mensual.map(patch), anual: cur.anual.map(patch) }));
+    try {
+      const res = await fetch("/api/recurrente", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id: r.id, done }),
+      });
+      if (!res.ok) throw new Error();
+    } catch {
+      const revert = (x: Recurrente) => (x.id === r.id ? { ...x, listoMes: !done } : x);
+      setRecs((cur) => ({ ...cur, mensual: cur.mensual.map(revert), anual: cur.anual.map(revert) }));
+    }
+  }
+
   return (
     <main className="fin">
       <header className="fin-head">
@@ -22,15 +41,94 @@ export default function Dashboard({ data }: { data: FinanceData }) {
       </header>
 
       <nav className="fin-tabs">
-        <button className={tab === "mes" ? "on" : ""} onClick={() => setTab("mes")}>Este mes</button>
         <button className={tab === "recurrentes" ? "on" : ""} onClick={() => setTab("recurrentes")}>Recurrentes</button>
+        <button className={tab === "mes" ? "on" : ""} onClick={() => setTab("mes")}>Este mes</button>
         <button className={tab === "deudas" ? "on" : ""} onClick={() => setTab("deudas")}>Deudas y metas</button>
       </nav>
 
+      {tab === "recurrentes" && <RecurrentesTab recs={recs} onToggle={toggleRec} />}
       {tab === "mes" && <MesTab data={data} />}
-      {tab === "recurrentes" && <RecurrentesTab data={data} />}
       {tab === "deudas" && <DeudasTab data={data} />}
     </main>
+  );
+}
+
+function RecurrentesTab({
+  recs,
+  onToggle,
+}: {
+  recs: FinanceData["recurrentes"];
+  onToggle: (r: Recurrente) => void;
+}) {
+  const activas = useMemo(() => [...recs.mensual, ...recs.anual], [recs]);
+  const listas = activas.filter((r) => r.listoMes).length;
+
+  return (
+    <section className="fin-sec">
+      <div className="fin-card fin-sum">
+        <div className="fin-sum-top">
+          <span className="fin-label">Cobradas este mes</span>
+          <span className="fin-sum-amt">
+            {listas} <span className="fin-muted">/ {activas.length}</span>
+          </span>
+        </div>
+        <Bar pct={activas.length ? (listas / activas.length) * 100 : 0} tone="gold" />
+        <span className="fin-hint" style={{ marginTop: 2 }}>
+          Fijo mensual: {money(recs.totalMensual)} · toca una para marcarla ✓
+        </span>
+      </div>
+
+      <h2 className="fin-h2">Mensuales</h2>
+      <ul className="fin-list">
+        {recs.mensual.map((x) => (
+          <RecRow key={x.id} r={x} onToggle={onToggle} />
+        ))}
+        {recs.mensual.length === 0 && <p className="fin-muted">—</p>}
+      </ul>
+
+      {recs.anual.length > 0 && (
+        <>
+          <h2 className="fin-h2">Anuales / otras</h2>
+          <ul className="fin-list">
+            {recs.anual.map((x) => (
+              <RecRow key={x.id} r={x} onToggle={onToggle} />
+            ))}
+          </ul>
+        </>
+      )}
+
+      {recs.canceladas.length > 0 && (
+        <>
+          <h2 className="fin-h2">Canceladas · no deberían reaparecer</h2>
+          <div className="fin-cancel">
+            {recs.canceladas.map((x) => (
+              <span key={x.id} className="fin-cancel-pill">{x.name}</span>
+            ))}
+          </div>
+          <p className="fin-hint">Si alguna de estas reaparece en el banco, es un cargo no deseado.</p>
+        </>
+      )}
+    </section>
+  );
+}
+
+function RecRow({ r, onToggle }: { r: Recurrente; onToggle: (r: Recurrente) => void }) {
+  return (
+    <li>
+      <button className={`fin-rec tappable ${r.listoMes ? "done" : ""}`} onClick={() => onToggle(r)}>
+        <span className={`fin-check ${r.listoMes ? "on" : ""}`}>{r.listoMes ? "✓" : ""}</span>
+        <div className="fin-rec-main">
+          <span className="fin-rec-name">{r.name}</span>
+          <span className="fin-rec-when">
+            {r.listoMes ? "Listo este mes" : r.cuando || "Pendiente"}
+            {r.priceChanged && (
+              <span className="fin-price"> · subió a {money(Math.abs(r.ultimoMonto ?? 0))}</span>
+            )}
+          </span>
+        </div>
+        <span className="fin-rec-amt">{money(r.monto)}</span>
+      </button>
+    </li>
   );
 }
 
@@ -89,61 +187,6 @@ function MesTab({ data }: { data: FinanceData }) {
               </li>
             ))}
           </ul>
-        </>
-      )}
-    </section>
-  );
-}
-
-function RecurrentesTab({ data }: { data: FinanceData }) {
-  const r = data.recurrentes;
-  return (
-    <section className="fin-sec">
-      <div className="fin-card fin-sum">
-        <span className="fin-label">Fijo mensual (activas)</span>
-        <span className="fin-sum-amt big">{money(r.totalMensual)}<span className="fin-muted"> /mes</span></span>
-      </div>
-
-      <h2 className="fin-h2">Mensuales</h2>
-      <ul className="fin-list">
-        {r.mensual.map((x, i) => (
-          <li key={i} className="fin-rec">
-            <div className="fin-rec-main">
-              <span className="fin-rec-name">{x.name}</span>
-              {x.cuando && <span className="fin-rec-when">{x.cuando}</span>}
-            </div>
-            <span className="fin-rec-amt">{money(x.monto)}</span>
-          </li>
-        ))}
-        {r.mensual.length === 0 && <p className="fin-muted">—</p>}
-      </ul>
-
-      {r.anual.length > 0 && (
-        <>
-          <h2 className="fin-h2">Anuales / otras</h2>
-          <ul className="fin-list">
-            {r.anual.map((x, i) => (
-              <li key={i} className="fin-rec">
-                <div className="fin-rec-main">
-                  <span className="fin-rec-name">{x.name}</span>
-                  {x.cuando && <span className="fin-rec-when">{x.cuando}</span>}
-                </div>
-                <span className="fin-rec-amt">{money(x.monto)}</span>
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
-
-      {r.canceladas.length > 0 && (
-        <>
-          <h2 className="fin-h2">Canceladas · no deberían reaparecer</h2>
-          <div className="fin-cancel">
-            {r.canceladas.map((x, i) => (
-              <span key={i} className="fin-cancel-pill">{x.name}</span>
-            ))}
-          </div>
-          <p className="fin-hint">Si alguna de estas reaparece en el banco, es un cargo no deseado.</p>
         </>
       )}
     </section>
