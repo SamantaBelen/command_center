@@ -165,3 +165,22 @@ html, body {
 .fin-price { color: var(--gold); font-weight: 600; }
 
 .fin-rec-main { flex: 1 1 auto; }
+
+/* subir actividad del mes */
+.fin-upload { display: flex; flex-direction: column; gap: 6px; margin-top: 2px; }
+.fin-upload-btn {
+  width: 100%;
+  background: var(--card);
+  border: 1.5px dashed var(--gold);
+  color: var(--gold);
+  border-radius: 14px;
+  padding: 13px;
+  font-size: 14.5px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+}
+.fin-upload-btn:active { transform: scale(0.99); }
+.fin-upload-btn:disabled { opacity: 0.6; cursor: default; }
+.fin-upload-ok { color: var(--green); font-size: 12.5px; margin: 2px 2px 0; line-height: 1.4; }
+.fin-upload-err { color: var(--red); font-size: 12.5px; margin: 2px 2px 0; line-height: 1.4; }
