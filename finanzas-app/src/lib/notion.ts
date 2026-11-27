@@ -75,13 +75,26 @@ export type BalanceRow = {
   statusRaw: string;
 };
 export type Recurrente = {
+  id: string;
   name: string;
   estado: string;
   cadencia: string;
   monto: number | null;
   cuando: string;
   categoria: string | null;
+  ultimoCobro: string | null; // YYYY-MM-DD
+  ultimoMonto: number | null;
+  listoMes: boolean; // ultimoCobro falls in the current month
+  priceChanged: boolean; // ultimoMonto differs from monto esperado
 };
+
+function currentMonthKey(): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+  }).format(new Date()); // "2026-11"
+}
 export type Debt = {
   name: string;
   owed: number | null;
@@ -169,15 +182,25 @@ async function getBalances(): Promise<FinanceData["balances"]> {
 
 async function getRecurrentes(): Promise<FinanceData["recurrentes"]> {
   const rows = await queryAll(RECURRENTES_DB);
+  const month = currentMonthKey();
   const all: Recurrente[] = rows.map((p) => {
     const pr = p.properties ?? {};
+    const monto = num(pr["Monto esperado"]);
+    const ultimoCobro = dstart(pr["Último cobro"]);
+    const ultimoMonto = num(pr["Último monto"]);
     return {
+      id: p.id,
       name: txt(pr.Name),
       estado: sel(pr.Estado) ?? "",
       cadencia: sel(pr.Cadencia) ?? "",
-      monto: num(pr["Monto esperado"]),
+      monto,
       cuando: txt(pr["Cuándo"]),
       categoria: sel(pr["Categoría"]),
+      ultimoCobro,
+      ultimoMonto,
+      listoMes: !!ultimoCobro && ultimoCobro.slice(0, 7) === month,
+      priceChanged:
+        ultimoMonto != null && monto != null && Math.abs(Math.abs(ultimoMonto) - monto) > 0.01,
     };
   });
   const activas = all.filter((r) => r.estado === "Activa");
@@ -236,4 +259,18 @@ export async function getFinanceData(): Promise<FinanceData> {
     getSavings(),
   ]);
   return { budget, balances, recurrentes, debts, savings };
+}
+
+// Mark a recurrente as charged this month (or clear it). Sets "Último cobro".
+export async function setRecurrenteCobro(id: string, done: boolean): Promise<void> {
+  const today = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+  await notion.pages.update({
+    page_id: id,
+    properties: { "Último cobro": done ? { date: { start: today } } : { date: null } },
+  });
 }
