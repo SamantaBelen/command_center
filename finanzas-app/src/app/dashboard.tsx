@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import type { FinanceData, Recurrente } from "@/lib/notion";
 
 const MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
@@ -78,6 +78,8 @@ function RecurrentesTab({
         </span>
       </div>
 
+      <UploadActivity />
+
       <h2 className="fin-h2">Mensuales</h2>
       <ul className="fin-list">
         {recs.mensual.map((x) => (
@@ -129,6 +131,60 @@ function RecRow({ r, onToggle }: { r: Recurrente; onToggle: (r: Recurrente) => v
         <span className="fin-rec-amt">{money(r.monto)}</span>
       </button>
     </li>
+  );
+}
+
+function UploadActivity() {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
+  const [msg, setMsg] = useState("");
+
+  async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    setStatus("sending");
+    setMsg("");
+    try {
+      const csv = await f.text();
+      const res = await fetch("/api/upload-activity", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ csv }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error ?? "error");
+      setStatus("sent");
+    } catch (err: any) {
+      setStatus("error");
+      setMsg(err?.message ?? "error");
+    } finally {
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  }
+
+  return (
+    <div className="fin-upload">
+      <input
+        ref={fileRef}
+        type="file"
+        accept=".csv,text/csv,text/plain"
+        style={{ display: "none" }}
+        onChange={onFile}
+      />
+      <button
+        className="fin-upload-btn"
+        onClick={() => fileRef.current?.click()}
+        disabled={status === "sending"}
+      >
+        {status === "sending" ? "Enviando…" : "⬆️  Subir actividad del mes (CSV)"}
+      </button>
+      {status === "sent" && (
+        <p className="fin-upload-ok">
+          Enviado ✓ · la routine está procesando. Te llega un push con el resumen.
+        </p>
+      )}
+      {status === "error" && <p className="fin-upload-err">No se pudo enviar: {msg}</p>}
+    </div>
   );
 }
 
